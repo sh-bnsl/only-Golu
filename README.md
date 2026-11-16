@@ -41,7 +41,8 @@ browser builds and draws.
 
 - **States** — Idle, Greeting and Angry (bar at the bottom, or keys 1–3). Faces morph smoothly;
   Idle slowly glances left, right, up-left, up-right. Eyes are plain black (no white glint).
-- **Intro** — grows in place with a 360° turn, greets with a smile, settles into Idle, then
+- **Intro** — plays on load and again from the **Intro** chip at the start of the bar (or I):
+  grows in place with a 360° turn, greets with a smile, settles into Idle, then
   lowers its visor.
 - **Interaction** — drag sideways to rotate; on release it coasts with your momentum and
   springs back face-on. Swipe up / down to raise / lower the visor;

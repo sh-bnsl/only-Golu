@@ -509,8 +509,9 @@ const scripts = [];               // timed one-shots { at, fn }
 
 function schedule(at, fn) { scripts.push({ at: stateTime + at, fn }); }
 
-function setState(next, { quiet = false } = {}) {
+function setState(next, { quiet = false, intro: byIntro = false } = {}) {
   if (!STATES.some(s => s.key === next)) return;
+  if (!byIntro) introRun = false;                     // any other state change ends the Intro chip
   const prev = state;
   if (prev !== next) { prevState = prev; prevStateTime = stateTime; poseBlend = 0; }
   state = next;
@@ -563,6 +564,24 @@ function setState(next, { quiet = false } = {}) {
 
 // ─── UI ───────────────────────────────────────────────────────────────────
 const nav = document.getElementById('states');
+// Intro: replays the opening — grows in with a full turn, greets, settles into
+// Idle, then lowers the visor. Its chip stays lit until that sequence ends.
+let introRun = false;
+const introBtn = document.createElement('button');
+introBtn.type = 'button';
+introBtn.textContent = 'Intro';
+introBtn.title = 'Intro (I)';
+introBtn.addEventListener('click', () => playIntro());
+nav.appendChild(introBtn);
+{ const d = document.createElement('span'); d.className = 'sep'; nav.appendChild(d); }   // Intro | moods
+function playIntro() {
+  setState('idle', { quiet: true });
+  helmet.setVisorDown(false);
+  syncVisor();
+  Object.assign(intro, { active: true, t: 0, scale: 0, greeted: false });
+  introRun = true;
+  syncNav();
+}
 STATES.forEach((s, i) => {
   const b = document.createElement('button');
   b.type = 'button';
@@ -573,7 +592,8 @@ STATES.forEach((s, i) => {
   nav.appendChild(b);
 });
 function syncNav() {
-  nav.querySelectorAll('button[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === state)));
+  introBtn.setAttribute('aria-pressed', String(introRun));
+  nav.querySelectorAll('button[data-state]').forEach(b => b.setAttribute('aria-pressed', String(!introRun && b.dataset.state === state)));
 }
 // visor toggle, after a divider in the same bar
 const sep = document.createElement('span');
@@ -641,6 +661,7 @@ addEventListener('keydown', (e) => {
   const n = parseInt(e.key, 10);
   if (n >= 1 && n <= STATES.length) { endIntro(); setState(STATES[n - 1].key); }
   if (e.key === 'v' || e.key === 'V') toggleVisor();
+  if (e.key === 'i' || e.key === 'I') playIntro();
   if (e.key === 'ArrowLeft') nudge(-1);
   if (e.key === 'ArrowRight') nudge(1);
 });
@@ -832,7 +853,7 @@ function updateIntro(dt) {
     // no pause: it greets while still settling — eyes morph to ^^, the smile
     // and cheeks bloom, a little happy hop + wave — then melts into idle
     intro.greeted = true;
-    setState('greeting', { quiet: true });
+    setState('greeting', { quiet: true, intro: true });
     hop(2.2);
     schedule(GREET_FOR, () => {
       if (state !== 'greeting') return;
@@ -1008,7 +1029,9 @@ function frame() {
 
 drawFace(faceCur, 1);
 setState('idle', { quiet: true });
+introRun = true;                                      // the page opens on the intro
+syncNav();
 requestAnimationFrame(frame);
 
 // small hook for automated checks
-window.orbi = { setState, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: () => { setState('idle', { quiet: true }); helmet.setVisorDown(false); syncVisor(); Object.assign(intro, { active: true, t: 0, scale: 0, greeted: false }); }, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };
+window.orbi = { setState, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };
