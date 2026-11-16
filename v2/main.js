@@ -109,7 +109,7 @@ addEventListener('resize', resize);
 resize();
 
 // ─── body geometry ────────────────────────────────────────────────────────
-const geometry = new THREE.SphereGeometry(R, 128, 96);   // Option 02: lighter mesh (was 256 × 192); the face is drawn in the shader, so it stays crisp
+const geometry = new THREE.SphereGeometry(R, 96, 72);   // Option 02: lighter mesh (was 256 × 192); the face is drawn in the shader, so it stays crisp
 // rest direction = object-space unit normal; the face shader samples by it
 geometry.setAttribute('aRest', geometry.attributes.normal.clone());
 

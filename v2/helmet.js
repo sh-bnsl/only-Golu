@@ -244,10 +244,10 @@ function applyAccent(c) {
 // ─── shell ────────────────────────────────────────────────────────────────
 function buildShell() {
   // bottom → top so the lathe's faces point outward
-  // Option 02: lighter mesh — every 3rd profile point (keeping both ends) and 128
+  // Option 02: lighter mesh — every 4th profile point (keeping both ends) and 96
   // segments round (was all ~270 points × 320); rAt() still uses the full profile
-  const lp = profile.filter((_, i, a) => i % 3 === 0 || i === a.length - 1);
-  const lathe = new THREE.LatheGeometry(lp.map(([r, y]) => new THREE.Vector2(r, y)).reverse(), 128);
+  const lp = profile.filter((_, i, a) => i % 4 === 0 || i === a.length - 1);
+  const lathe = new THREE.LatheGeometry(lp.map(([r, y]) => new THREE.Vector2(r, y)).reverse(), 96);
   const mat = new THREE.MeshPhysicalMaterial({
     roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.14, side: THREE.DoubleSide,
   });
@@ -333,7 +333,7 @@ function buildEdgeBead() {
   }
   const loop = [...front, ...back].filter((p, i, a) => i === 0 || p.distanceTo(a[i - 1]) > 1e-4);
   return new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 480, 0.016, 10, true),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 300, 0.016, 8, true),
     new THREE.MeshPhysicalMaterial({ color: 0x0e0e0e, roughness: 0.38, clearcoat: 0.4, clearcoatRoughness: 0.25 }),
   );
 }
@@ -354,11 +354,11 @@ function buildLiner() {
   // pad sits a touch proud of the shell, so the shell never z-fights through it
   const curve = liftedCurve(P.liner, -R + 0.03);
   const mat = leatherMaterial();
-  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 360, R, 20, false), mat);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 240, R, 12, false), mat);
   g.add(tube);
   for (const t of [0, 1]) {                            // round caps
     // geometry baked in place, so the grain is evaluated in helmet space
-    const capGeo = new THREE.SphereGeometry(R, 20, 14);
+    const capGeo = new THREE.SphereGeometry(R, 12, 8);
     const at = curve.getPoint(t);
     capGeo.translate(at.x, at.y, at.z);
     const cap = new THREE.Mesh(capGeo, mat);
@@ -538,7 +538,7 @@ function buildCrownPlate() {
     return Math.sqrt(Math.max(0, W * W - d * d));
   };
 
-  const cols = 160, rows = 10;
+  const cols = 110, rows = 8;
   const outer = [], inner = [], idx = [];
   const rimTop = [], rimBot = [];
   const T = new THREE.Vector3(), Nn = new THREE.Vector3(), L = new THREE.Vector3();
@@ -586,7 +586,7 @@ function buildCrownPlate() {
   // moulded rounded edge all the way round
   const loop = [...rimTop, ...rimBot.reverse()].filter((p, i, arr) => i === 0 || p.distanceTo(arr[i - 1]) > 1e-4);
   group.add(new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 400, thick / 2, 10, true),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 260, thick / 2, 8, true),
     black,
   ));
   return group;
@@ -665,7 +665,7 @@ function buildGlassVisor() {
   const pt = (ph, th) => new THREE.Vector3(
     VISOR_R * Math.sin(th) * Math.sin(ph), VISOR_R * Math.cos(th), VISOR_R * Math.sin(th) * Math.cos(ph));
 
-  const cols = 110, rows = 20;
+  const cols = 80, rows = 14;
   const pos = [], uv = [], idx = [], rimTop = [], rimBot = [];
   for (let i = 0; i < cols; i++) {
     const u = i / (cols - 1);
@@ -706,7 +706,7 @@ function buildGlassVisor() {
   // polished rim all the way round (the shield's moulded edge)
   const loop = [...rimTop, ...rimBot.reverse()].filter((p, i, a) => i === 0 || p.distanceTo(a[i - 1]) > 1e-4);
   const rim = new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 360, 0.012, 8, true),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 240, 0.012, 6, true),
     new THREE.MeshPhysicalMaterial({ color: 0x23262d, roughness: 0.18, clearcoat: 0.8, clearcoatRoughness: 0.05 }),
   );
   rim.name = 'Visor rim';
