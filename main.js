@@ -26,6 +26,7 @@ const BASE_PITCH = -0.2;        // tip the face up toward the camera
 const STATES = [
   { key: 'idle',     label: 'Idle' },
   { key: 'greeting', label: 'Greeting' },
+  { key: 'angry',    label: 'Angry' },
 ];
 
 // ─── renderer / scene ─────────────────────────────────────────────────────
@@ -653,6 +654,22 @@ addEventListener('keydown', (e) => {
 // A short still press is a tap (a bounce).
 const AXIS_LOCK_PX = 8;
 const VISOR_SWIPE_PX = 35;
+// Three swipes up in a row (each within ANGRY_GAP_MS of the last) make the bot
+// angry; a swipe down or a pause resets the count.
+const ANGRY_SWIPES = 3;
+const ANGRY_GAP_MS = 1500;
+let upSwipes = 0, lastUpSwipe = 0;
+function countSwipe(up) {
+  const now = performance.now();
+  if (!up) { upSwipes = 0; return; }
+  upSwipes = now - lastUpSwipe <= ANGRY_GAP_MS ? upSwipes + 1 : 1;
+  lastUpSwipe = now;
+  if (upSwipes >= ANGRY_SWIPES) {
+    upSwipes = 0;
+    endIntro();
+    setState('angry');
+  }
+}
 let gesture = null;
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -687,6 +704,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (!gesture.fired && Math.abs(ty) >= VISOR_SWIPE_PX) {
       gesture.fired = true;
       setVisor(ty > 0);
+      countSwipe(ty < 0);
     }
     return;
   }

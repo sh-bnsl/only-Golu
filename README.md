@@ -39,12 +39,13 @@ browser builds and draws.
 
 ## What's in it
 
-- **States** — Idle and Greeting (bar at the bottom, or keys 1–2). Faces morph smoothly;
+- **States** — Idle, Greeting and Angry (bar at the bottom, or keys 1–3). Faces morph smoothly;
   Idle slowly glances left, right, up-left, up-right. Eyes are plain black (no white glint).
 - **Intro** — grows in place with a 360° turn, greets with a smile, settles into Idle, then
   lowers its visor.
 - **Interaction** — drag sideways to rotate; on release it coasts with your momentum and
-  springs back face-on. Swipe up / down to raise / lower the visor. Tap to bounce.
+  springs back face-on. Swipe up / down to raise / lower the visor;
+  swipe up 3 times in a row (each within 1.5 s) and it gets angry. Tap to bounce.
   ← / → give it a spin.
 - **Visor** — hinged smoked-glass flip-up visor (swipe up/down on the bot, the bar button, or V). It swings
   around the hinge axis at the temples without clipping, and drops down after the intro.
