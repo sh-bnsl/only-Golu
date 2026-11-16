@@ -11,7 +11,7 @@
 // coordinates and sampled in the shader by the vertex's rest direction.
 
 import * as THREE from 'three';
-import { createHelmet, SURFACE_GLSL, SHELL_PATH } from './helmet.js';
+import { createHelmet, SURFACE_GLSL } from './helmet.js';
 
 // ─── constants ────────────────────────────────────────────────────────────
 const R = 1;                    // body radius (Figma body = 240px → 120px = 1 unit)
@@ -375,85 +375,6 @@ const helmet = createHelmet();
 body.add(helmet.group);
 const BODY_BOTTOM = R;                               // distance from the centre down to where it sits on the floor
 const ORBIT_UP = 1.55;                               // dizzy beads circle this far above the centre
-
-// ─── shadows, exactly as Figma frame 1060:79394 ───────────────────────────
-// In the 80px frame the body is r 30, so 1 unit = 30px; Figma blur radius r
-// is a Gaussian with σ = r / 2 (what its SVG export writes).
-//   Body           DROP_SHADOW  #000 40%, y +5.5, blur 9   → offset 0.183, σ 0.15
-//   Helmet shell   DROP_SHADOW  #000 45%, y +10,  blur 18 (in its 320 space, r 120)
-//                                                          → offset 0.083, σ 0.075
-//   Contact shadow ellipse 30.4×4.8 at y 74.4, #1D2539 16%, LAYER_BLUR 3.2
-//                  → rx 0.507, ry 0.08, centre 1.31 below the body centre, σ 0.053
-//   Bounce glow    hidden in Figma → not drawn
-// They are screen-facing sprites, so they read exactly like the flat drawing:
-// the drop shadows sit just behind the bot (scaled to stay the same on screen),
-// the contact shadow stays on the ground line.
-const SHADOW_EXTENT = 2;
-function shadowSprite(draw) {
-  const size = 1024, k = size / (2 * SHADOW_EXTENT);
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  ctx.translate(size / 2, size / 2);
-  draw(ctx, k);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(2 * SHADOW_EXTENT, 2 * SHADOW_EXTENT),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }),
-  );
-  scene.add(mesh);
-  return mesh;
-}
-const orbiBodyShadow = (ctx, k) => {
-  ctx.filter = `blur(${0.22 * k}px)`;              // Figma σ 0.15, softened ×1.5
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.beginPath();
-  ctx.arc(0, 0, R * k, 0, Math.PI * 2);              // offset applied in placeShadows
-  ctx.fill();
-};
-const orbiHelmetShadow = (ctx, k) => {
-  ctx.filter = `blur(${0.11 * k}px)`;              // Figma σ 0.075, softened ×1.5
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.scale(k / 120, k / 120);
-  ctx.translate(-164, -158);                          // offset applied in placeShadows
-  ctx.fill(new Path2D(SHELL_PATH));
-};
-const CONTACT_Y = HOVER_Y - 1.31;
-const contactShadow = shadowSprite((ctx, k) => {
-  ctx.filter = `blur(${0.08 * k}px)`;              // Figma σ 0.053, softened ×1.5
-  ctx.fillStyle = 'rgba(29,37,57,0.16)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 0.507 * k, 0.08 * k, 0, 0, Math.PI * 2);
-  ctx.fill();
-});
-const toCam = new THREE.Vector3(), camUp = new THREE.Vector3(), qRoll = new THREE.Quaternion(), zAxis = new THREE.Vector3(0, 0, 1);
-let viewRoll = 0;                                     // the bot's on-screen roll this frame
-// [sprite, Figma y offset (units)]
-const DROP = [[shadowSprite(orbiBodyShadow), 0.183], [shadowSprite(orbiHelmetShadow), 0.083]];
-function placeShadows() {
-  toCam.subVectors(camera.position, body.position).normalize();
-  camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
-  const dBody = camera.position.distanceTo(body.position);
-  qRoll.setFromAxisAngle(zAxis, viewRoll);
-  for (const [sp, dy] of DROP) {
-    sp.position.copy(body.position).addScaledVector(toCam, -1.6);   // just behind the bot
-    const sc = camera.position.distanceTo(sp.position) / dBody;
-    sp.scale.setScalar(sc * intro.scale);
-    sp.position.addScaledVector(camUp, -dy * sc * intro.scale);   // light from above: offset stays straight down
-    sp.quaternion.copy(camera.quaternion).multiply(qRoll);   // silhouette turns with the bot
-  }
-  // contact shadow stays on the ground line and softens as the bot rises
-  const lift = Math.max(0, body.position.y - HOVER_Y);
-  // drop shadows soften as the bot rises
-  for (const [sp] of DROP) sp.material.opacity = THREE.MathUtils.clamp((2.8 - lift) / 1.3, 0, 1);
-  contactShadow.position.set(body.position.x, CONTACT_Y, 0);
-  contactShadow.quaternion.copy(camera.quaternion);
-  contactShadow.scale.setScalar((1 + Math.min(lift, 2) * 0.4) * intro.scale);
-  contactShadow.material.opacity = THREE.MathUtils.clamp(1 - lift * 0.45, 0, 1) * Math.min(1, intro.scale);
-  for (const [sp] of DROP) sp.visible = body.visible;
-  contactShadow.visible = body.visible;
-}
 
 // ─── props: dizzy orbit, Zz ───────────────────────────────────────────────
 const satin = (color, emissive = 0x000000, ei = 0) => new THREE.MeshPhysicalMaterial({
@@ -873,8 +794,8 @@ let acc = 0;
 let simT = 0;
 // ─── intro: grow from nothing with a full turn, in place ──────────────────
 // Scale 0 → 1 on an ease-out-back (overshoots ~8%, settles) while the bot
-// makes one full turn on its vertical axis, ending face-on; shadows grow with
-// it. A grab or a state pick finishes it instantly.
+// makes one full turn on its vertical axis, ending face-on.
+// A grab or a state pick finishes it instantly.
 const intro = { active: true, t: 0, scale: 0, greeted: false };
 const GREET_AT = 0.6;       // s into the intro: as the scale overshoot peaks and the turn swings home
 const GREET_FOR = 1.7;      // s of greeting before it melts into idle
@@ -1016,7 +937,6 @@ function update(dt) {
   pitch += m.nod + m.tilt;
 
   euler.set(pitch, yaw + m.spin, roll, 'YXZ');
-  viewRoll = roll;
   body.quaternion.setFromEuler(euler);
   body.scale.setScalar(Math.max(1e-4, intro.scale));
   const tremble = m.shake ? Math.sin(t * 90) * m.shake : 0;
@@ -1024,7 +944,6 @@ function update(dt) {
 
   updateFace(dt);
 
-  placeShadows();
   // dizzy orbit — three beads circling above the head
   up.set(0, 1, 0).applyQuaternion(body.quaternion);
   orbiters.forEach((o, i) => {

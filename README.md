@@ -26,11 +26,12 @@ Measured in the browser against the original Orbi (Bot 1 of `orbi-soft-body`):
 
 | | Original | Optimised | Change |
 |---|---|---|---|
-| Triangles | 503,606 | 30,882 | −94% |
-| Vertices | 260,425 | 18,305 | −93% |
+| Triangles | 503,606 | 30,876 | −94% |
+| Vertices | 260,425 | 18,293 | −93% |
 | Geometry memory | 12.27 MB | 0.76 MB | −94% |
-| Triangles drawn per frame (incl. shadows) | 524,438 | 35,374 | −93% |
-| Meshes / draw calls | 31 / 29 | 31 / 29 | same |
+| Triangles drawn per frame | 524,438 | 35,368 | −93% |
+| Meshes / draw calls | 31 / 29 | 28 / 26 | −3 (no shadow sprites) |
+| Shadow textures (1024 × 1024) | 3 (~12 MB) | 0 | removed |
 
 The model is built in code when the page opens, so file sizes barely change
 (2.26 MB → 2.21 MB, almost all of it three.js in `vendor/`); the saving is in what the
@@ -51,11 +52,11 @@ browser builds and draws.
 - **Helmet** (`helmet.js`) — shell, artwork, liner + stitching built from the Figma
   component's SVG paths; glass visor + hinges; procedural paint, leather and metal detail.
 - **Shading** — lacquered candy finish (clear coat, inner glow and a brand-tinted edge glow), studio environment lighting, analytic helmet-on-ball occlusion, and the
-  Figma drop / contact shadows.
+  no drop or contact shadows (removed).
 
 ## Files
 
 - `index.html` — page + state bar
-- `main.js` — scene, bot, face morphing, motion, intro, shadows
+- `main.js` — scene, bot, face morphing, motion, intro
 - `helmet.js` — the helmet
 - `vendor/` — three.js r186
