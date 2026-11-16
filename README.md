@@ -13,17 +13,12 @@ python3 -m http.server 8000
 
 then visit http://localhost:8000.
 
-## Options
+## Look and mesh
 
-Two iterations, switched with the white pill on the left (or `?v=2`):
-
-- **Option 01** (`/`) — the Figma noon yellow (#FFEB45 body).
-- **Option 02** (`/v2/`) — a brighter, more saturated lemon yellow (#FFF000 body, lighter lower
-  tint, yellow sheen, a yellow self-glow so the shadow side doesn't go olive).
-  Its mesh is optimised: ~56k triangles instead of ~504k (ball 96 × 72, helmet shell
-  96 segments on every 4th profile point, lighter tubes, plate, visor and snaps).
-
-Each option is a full copy (`index.html`, `main.js`, `helmet.js`); `vendor/` and `switcher.*` are shared.
+- **Colour** — a bright, saturated lemon yellow (#FFF000 body, lighter lower tint, yellow
+  sheen, and a yellow self-glow so the shadow side doesn't go olive).
+- **Mesh** — optimised to ~31k triangles (the original build was ~504k): ball 64 × 48, helmet
+  shell 72 segments on every 5th profile point, lighter tubes, plate, visor and snaps.
 
 ## What's in it
 
@@ -36,7 +31,7 @@ Each option is a full copy (`index.html`, `main.js`, `helmet.js`); `vendor/` and
   ← / → give it a spin.
 - **Visor** — hinged smoked-glass flip-up visor (swipe up/down on the bot, the bar button, or V). It swings
   around the hinge axis at the temples without clipping, and drops down after the intro.
-- **Colour** — noon yellow only (no colour switch).
+- **Colour** — one fixed yellow (no colour switch).
 - **Helmet** (`helmet.js`) — shell, artwork, liner + stitching built from the Figma
   component's SVG paths; glass visor + hinges; procedural paint, leather and metal detail.
 - **Shading** — lacquered candy finish (clear coat, inner glow and a brand-tinted edge glow), studio environment lighting, analytic helmet-on-ball occlusion, and the

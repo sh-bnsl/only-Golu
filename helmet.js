@@ -244,7 +244,10 @@ function applyAccent(c) {
 // ─── shell ────────────────────────────────────────────────────────────────
 function buildShell() {
   // bottom → top so the lathe's faces point outward
-  const lathe = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)).reverse(), 320);
+  // optimised mesh — every 5th profile point (keeping both ends) and 72
+  // segments round (was all ~270 points × 320); rAt() still uses the full profile
+  const lp = profile.filter((_, i, a) => i % 5 === 0 || i === a.length - 1);
+  const lathe = new THREE.LatheGeometry(lp.map(([r, y]) => new THREE.Vector2(r, y)).reverse(), 72);
   const mat = new THREE.MeshPhysicalMaterial({
     roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.14, side: THREE.DoubleSide,
   });
@@ -330,7 +333,7 @@ function buildEdgeBead() {
   }
   const loop = [...front, ...back].filter((p, i, a) => i === 0 || p.distanceTo(a[i - 1]) > 1e-4);
   return new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 1400, 0.016, 16, true),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 200, 0.016, 6, true),
     new THREE.MeshPhysicalMaterial({ color: 0x0e0e0e, roughness: 0.38, clearcoat: 0.4, clearcoatRoughness: 0.25 }),
   );
 }
@@ -351,11 +354,11 @@ function buildLiner() {
   // pad sits a touch proud of the shell, so the shell never z-fights through it
   const curve = liftedCurve(P.liner, -R + 0.03);
   const mat = leatherMaterial();
-  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 900, R, 40, false), mat);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, R, 10, false), mat);
   g.add(tube);
   for (const t of [0, 1]) {                            // round caps
     // geometry baked in place, so the grain is evaluated in helmet space
-    const capGeo = new THREE.SphereGeometry(R, 40, 28);
+    const capGeo = new THREE.SphereGeometry(R, 10, 6);
     const at = curve.getPoint(t);
     capGeo.translate(at.x, at.y, at.z);
     const cap = new THREE.Mesh(capGeo, mat);
@@ -535,7 +538,7 @@ function buildCrownPlate() {
     return Math.sqrt(Math.max(0, W * W - d * d));
   };
 
-  const cols = 360, rows = 20;
+  const cols = 80, rows = 6;
   const outer = [], inner = [], idx = [];
   const rimTop = [], rimBot = [];
   const T = new THREE.Vector3(), Nn = new THREE.Vector3(), L = new THREE.Vector3();
@@ -583,7 +586,7 @@ function buildCrownPlate() {
   // moulded rounded edge all the way round
   const loop = [...rimTop, ...rimBot.reverse()].filter((p, i, arr) => i === 0 || p.distanceTo(arr[i - 1]) > 1e-4);
   group.add(new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 1000, thick / 2, 16, true),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 180, thick / 2, 6, true),
     black,
   ));
   return group;
@@ -596,7 +599,7 @@ function buildSnap(side) {
   g.position.copy(base).addScaledVector(n, PLATE.lift + PLATE.thick / 2);   // seated on the plate
   g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
   const ring = new THREE.Mesh(
-    new THREE.SphereGeometry(8 / PX, 64, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(8 / PX, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2),
     // spun metal: sphere uv runs around the cap axis, so the anisotropic
     // highlight streaks concentrically like a machined stud
     new THREE.MeshPhysicalMaterial({ color: 0xc9cfd6, metalness: 0.9, roughness: 0.32, anisotropy: 0.85 }),
@@ -604,7 +607,7 @@ function buildSnap(side) {
   ring.rotation.x = Math.PI / 2;
   ring.scale.set(1, 0.45, 1);
   const core = new THREE.Mesh(
-    new THREE.SphereGeometry(3.6 / PX, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(3.6 / PX, 16, 6, 0, Math.PI * 2, 0, Math.PI / 2),
     new THREE.MeshPhysicalMaterial({ color: 0x9aa3ad, metalness: 0.9, roughness: 0.38, anisotropy: 0.85 }),
   );
   core.rotation.x = Math.PI / 2;
@@ -662,7 +665,7 @@ function buildGlassVisor() {
   const pt = (ph, th) => new THREE.Vector3(
     VISOR_R * Math.sin(th) * Math.sin(ph), VISOR_R * Math.cos(th), VISOR_R * Math.sin(th) * Math.cos(ph));
 
-  const cols = 220, rows = 40;
+  const cols = 60, rows = 10;
   const pos = [], uv = [], idx = [], rimTop = [], rimBot = [];
   for (let i = 0; i < cols; i++) {
     const u = i / (cols - 1);
@@ -703,7 +706,7 @@ function buildGlassVisor() {
   // polished rim all the way round (the shield's moulded edge)
   const loop = [...rimTop, ...rimBot.reverse()].filter((p, i, a) => i === 0 || p.distanceTo(a[i - 1]) > 1e-4);
   const rim = new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 900, 0.012, 12, true),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true, 'centripetal'), 160, 0.012, 6, true),
     new THREE.MeshPhysicalMaterial({ color: 0x23262d, roughness: 0.18, clearcoat: 0.8, clearcoatRoughness: 0.05 }),
   );
   rim.name = 'Visor rim';

@@ -109,7 +109,7 @@ addEventListener('resize', resize);
 resize();
 
 // ─── body geometry ────────────────────────────────────────────────────────
-const geometry = new THREE.SphereGeometry(R, 256, 192);
+const geometry = new THREE.SphereGeometry(R, 64, 48);   // optimised mesh (was 256 × 192); the face is drawn in the shader, so it stays crisp
 // rest direction = object-space unit normal; the face shader samples by it
 geometry.setAttribute('aRest', geometry.attributes.normal.clone());
 
@@ -679,10 +679,14 @@ function toggleVisor() {
 visorBtn.addEventListener('click', toggleVisor);
 syncVisor();
 
-// ─── colour: noon yellow only ─────────────────────────────────────────────
-// The ball (base + lower tint), sheen, rim light, helmet shade, paint and
-// stitching all take the Figma noon tile.
-const NOON = { name: 'noon', body: 0xffeb45, tint: 0xf2dc00, accent: 0xfeee00, sheen: 0xfff6c8, shade: [0.9, 0.86, 0.74] };
+// ─── colour: bright, saturated yellow ───────────────────────────────────
+// The Figma noon tile is body #FFEB45, tint #F2DC00. Here the
+// ball is a purer, fully saturated lemon yellow with a lighter lower tint, a
+// yellow (not white) sheen, a warmer helmet shade and a yellow self-glow
+// (GLOW, × body) so the shadow side stays bright instead of going olive.
+// Helmet paint + stitching follow the accent.
+const NOON = { name: 'noon', body: 0xfff000, tint: 0xffe600, accent: 0xfff000, sheen: 0xfff8b0, shade: [0.96, 0.88, 0.5] };
+const GLOW = 0.22;
 const WHITE = new THREE.Color(1, 1, 1);
 const themeColor = (th, hex) => new THREE.Color(hex);
 function toColors(th) {
@@ -705,7 +709,7 @@ function applyTheme() {
   uniforms.uShade.value.copy(themeCur.shade);
   uniforms.uGlowColor.value.copy(themeCur.body);
   bodyMat.sheenColor.copy(themeCur.sheen);
-  bodyMat.emissive.copy(themeCur.tint).multiplyScalar(0.008);   // ≈ the original 0x141000 for yellow
+  bodyMat.emissive.copy(themeCur.body).multiplyScalar(GLOW);
   helmet.setAccent(themeCur.accent);
   helmet.setLogoWhite(themeCur.logo);
 }
