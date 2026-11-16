@@ -51,8 +51,8 @@ browser builds and draws.
 - **Colour** — one fixed yellow (no colour switch).
 - **Helmet** (`helmet.js`) — shell, artwork, liner + stitching built from the Figma
   component's SVG paths; glass visor + hinges; procedural paint, leather and metal detail.
-- **Shading** — lacquered candy finish (clear coat, inner glow and a brand-tinted edge glow), studio environment lighting, analytic helmet-on-ball occlusion, and the
-  no drop or contact shadows (removed).
+- **Shading** — lacquered candy finish (clear coat, inner glow and a brand-tinted edge glow), studio environment lighting, analytic helmet-on-ball occlusion;
+  no drop or contact shadows under the bot.
 
 ## Files
 
