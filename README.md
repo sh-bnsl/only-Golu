@@ -13,6 +13,18 @@ python3 -m http.server 8000
 
 then visit http://localhost:8000.
 
+## Options
+
+Two iterations, switched with the white pill on the left (or `?v=2`):
+
+- **Option 01** (`/`) — the Figma noon yellow (#FFEB45 body).
+- **Option 02** (`/v2/`) — a brighter, more saturated lemon yellow (#FFF000 body, lighter lower
+  tint, yellow sheen, a yellow self-glow so the shadow side doesn't go olive).
+  Its mesh is optimised: ~102k triangles instead of ~504k (ball 128 × 96, helmet shell
+  128 segments on every 3rd profile point, lighter tubes, plate, visor and snaps).
+
+Each option is a full copy (`index.html`, `main.js`, `helmet.js`); `vendor/` and `switcher.*` are shared.
+
 ## What's in it
 
 - **States** — Idle and Greeting (bar at the bottom, or keys 1–2). Faces morph smoothly;

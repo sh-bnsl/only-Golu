@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html data-variant="1" lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -24,7 +24,7 @@
   #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
   #stage.grabbing { cursor: grabbing; }
 
-  nav {
+  #states {
     position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
     display: flex; gap: 2px; padding: 5px; border-radius: 999px;
     background: rgba(255, 255, 255, .82); border: 1px solid var(--pill-line);
@@ -32,23 +32,24 @@
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: none;
   }
-  nav::-webkit-scrollbar { display: none; }
-  nav button {
+  #states::-webkit-scrollbar { display: none; }
+  #states button {
     appearance: none; border: 0; cursor: pointer; white-space: nowrap;
     font: inherit; color: var(--muted); background: transparent;
     padding: 8px 11px; border-radius: 999px; transition: color .2s, background .2s;
   }
-  nav button:hover { color: var(--ink); }
-  nav button[aria-pressed="true"] { color: var(--ink); background: var(--accent); }
-  nav .sep { width: 1px; margin: 6px 2px; background: var(--pill-line); flex: none; }
-  nav button.visor[aria-pressed="true"] { color: var(--ink); background: rgba(29, 37, 57, .08); }
-  nav button.bot[aria-pressed="true"] { color: #fff; background: var(--ink); }
+  #states button:hover { color: var(--ink); }
+  #states button[aria-pressed="true"] { color: var(--ink); background: var(--accent); }
+  #states .sep { width: 1px; margin: 6px 2px; background: var(--pill-line); flex: none; }
+  #states button.visor[aria-pressed="true"] { color: var(--ink); background: rgba(29, 37, 57, .08); }
+  #states button.bot[aria-pressed="true"] { color: #fff; background: var(--ink); }
 
   @media (max-width: 640px) {
-    nav { bottom: 16px; }
-    nav button { padding: 8px 9px; }
+    #states { bottom: 16px; }
+    #states button { padding: 8px 9px; }
   }
 </style>
+<link rel="stylesheet" href="switcher.css">
 </head>
 <body>
 <canvas id="stage"></canvas>
@@ -61,5 +62,10 @@
 } }
 </script>
 <script type="module" src="main.js"></script>
+<nav class="vswitch" id="vswitch" aria-label="Design variations">
+  <button class="vswitch__b" data-v="1" aria-pressed="true">1</button>
+  <button class="vswitch__b" data-v="2" aria-pressed="false">2</button>
+</nav>
+<script src="switcher.js"></script>
 </body>
 </html>
