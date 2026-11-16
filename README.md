@@ -20,6 +20,22 @@ then visit http://localhost:8000.
 - **Mesh** — optimised to ~31k triangles (the original build was ~504k): ball 64 × 48, helmet
   shell 72 segments on every 5th profile point, lighter tubes, plate, visor and snaps.
 
+## Optimisation numbers
+
+Measured in the browser against the original Orbi (Bot 1 of `orbi-soft-body`):
+
+| | Original | Optimised | Change |
+|---|---|---|---|
+| Triangles | 503,606 | 30,882 | −94% |
+| Vertices | 260,425 | 18,305 | −93% |
+| Geometry memory | 12.27 MB | 0.76 MB | −94% |
+| Triangles drawn per frame (incl. shadows) | 524,438 | 35,374 | −93% |
+| Meshes / draw calls | 31 / 29 | 31 / 29 | same |
+
+The model is built in code when the page opens, so file sizes barely change
+(2.26 MB → 2.21 MB, almost all of it three.js in `vendor/`); the saving is in what the
+browser builds and draws.
+
 ## What's in it
 
 - **States** — Idle and Greeting (bar at the bottom, or keys 1–2). Faces morph smoothly;
