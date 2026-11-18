@@ -603,16 +603,19 @@ const hearts = [];
 // helmet's outline without leaving the top of a short window
 const HEART_DIRS = [[-0.8, 0.6, 0.28, 1.25], [0.7, 0.72, 0.3, 1.05], [1, 0.15, 0.23, 1.15]];
 const _hR = new THREE.Vector3(), _hU = new THREE.Vector3(), _hB = new THREE.Vector3();
+function addHeart(userData) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: heartTex, transparent: true, depthWrite: false, toneMapped: false }));
+  sp.userData = userData;
+  sp.visible = false;
+  scene.add(sp);
+  hearts.push(sp);
+}
 function popHearts() {
   _hB.subVectors(body.position, camera.position).normalize();
   HEART_DIRS.forEach(([dx, dy, size, reach], i) => {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: heartTex, transparent: true, depthWrite: false, toneMapped: false }));
     const n = Math.hypot(dx, dy);
-    sp.userData = { age: -i * 0.09, dx: dx / n, dy: dy / n, size, reach, rot: (i - 1) * -0.35,
-      origin: body.position.clone().addScaledVector(_hB, 0.45) };   // a little behind the bot's centre
-    sp.visible = false;
-    scene.add(sp);
-    hearts.push(sp);
+    addHeart({ age: -i * 0.09, dx: dx / n, dy: dy / n, size, reach, rot: (i - 1) * -0.35,
+      origin: body.position.clone().addScaledVector(_hB, 0.45) });   // a little behind the bot's centre
   });
 }
 function updateHearts(dt) {
@@ -1034,7 +1037,7 @@ function updateSuperAngry(dt) {
     sa.phase = null;
     setState('idle');
     hop(1.1);
-    if (hel.on) schedule(FACE_SETTLE, () => { if (state === 'idle' && hel.on) setVisor(true); });
+    if (hel.on) schedule(FACE_SETTLE, 'angryVisorDown');
   }
 }
 
@@ -1161,9 +1164,28 @@ function setFaceOverride(kind) {
 let stateTime = 0;
 let eyeOpen = 1;
 let blinkT = -1, nextBlink = 2.5;
-const scripts = [];               // timed one-shots { at, fn }
+const scripts = [];               // timed one-shots { at, name, arg }
 
-function schedule(at, fn) { scripts.push({ at: stateTime + at, fn }); }
+// Timed one-shots are named (not closures) so a frame can be saved and
+// resumed with them still pending (see getFrame / setFrame).
+const SCRIPTS = {
+  shake: (v) => { m.shake = v; },
+  toAngry: () => setState('angry'),                   // after the visor has swung open (goAngry)
+  backToIdle: (from) => { if (state === from) setState('idle'); },   // a mood's hold is up
+  angryEnd: () => {
+    if (state !== 'angry') return;
+    setState('idle');                                 // the face calms back to normal first…
+    schedule(FACE_SETTLE, 'angryVisorDown');          // …then the visor comes down
+  },
+  angryVisorDown: () => { if (state === 'idle' && hel.on) setVisor(true); },
+  greetEnd: () => {                                   // the intro's greeting melts into idle
+    if (state !== 'greeting') return;
+    setState('idle');
+    schedule(0.2, 'introVisorDown');                  // settles in, then the visor glides down
+  },
+  introVisorDown: () => { if (state === 'idle') setVisor(true, { slow: true }); },
+};
+function schedule(at, name, arg) { scripts.push({ at: stateTime + at, name, arg }); }
 const CURIOUS_HOLD = 2.2;        // s of curious before Idle
 const HAPPY_HOLD = 1.5;          // s of happy before Idle
 const ANGRY_HOLD = 1.5;         // s the bot stays angry before it goes back to Idle
@@ -1179,7 +1201,7 @@ function goAngry() {
   if (!helmet.visorDown || !hel.on) { setState('angry'); return; }
   scripts.length = 0;                                 // drop anything pending (e.g. the intro's own hand-off)
   setVisor(false);
-  schedule(VISOR_LEAD, () => setState('angry'));
+  schedule(VISOR_LEAD, 'toAngry');
 }
 function pickState(key) {
   if (key === 'angry') { goAngry(); return; }
@@ -1207,12 +1229,12 @@ function setState(next, { quiet = false, intro: byIntro = false } = {}) {
     switch (next) {
       case 'greeting':
         hop(2.65);                                      // (the frame has little headroom: this keeps the hop + stretch in view)
-        schedule(GREETING_HOLD, () => { if (state === 'greeting') setState('idle'); });
+        schedule(GREETING_HOLD, 'backToIdle', 'greeting');
         break;
       case 'error':
         m.vx -= 2.4;
         m.shake = 0.03;
-        schedule(0.45, () => { m.shake = 0; });
+        schedule(0.45, 'shake', 0);
         break;
       case 'dizzy':
         m.vx += 1.6;
@@ -1222,12 +1244,8 @@ function setState(next, { quiet = false, intro: byIntro = false } = {}) {
         // Idle ANGRY_HOLD seconds after it got angry
         m.shake = 0.024;
         m.nodV += 1.4;
-        schedule(0.4, () => { m.shake = 0.006; });
-        schedule(ANGRY_HOLD, () => {
-          if (state !== 'angry') return;
-          setState('idle');                             // the face calms back to normal first…
-          schedule(FACE_SETTLE, () => { if (state === 'idle' && hel.on) setVisor(true); });   // …then the visor comes down
-        });
+        schedule(0.4, 'shake', 0.006);
+        schedule(ANGRY_HOLD, 'angryEnd');               // cools off: the face first, then the visor comes down
         break;
       }
       case 'yellowfriday':
@@ -1237,7 +1255,7 @@ function setState(next, { quiet = false, intro: byIntro = false } = {}) {
         // a little "hm?" — a bop, leans in, tilts and peeks; then back to Idle
         hop(1.3);
         m.nodV += 0.7;
-        schedule(CURIOUS_HOLD, () => { if (state === 'curious') setState('idle'); });
+        schedule(CURIOUS_HOLD, 'backToIdle', 'curious');
         break;
       case 'sunglass':
         startShades();
@@ -1248,19 +1266,19 @@ function setState(next, { quiet = false, intro: byIntro = false } = {}) {
       case 'tapme':
         // the "tap me!" ask on demand: leans in eager, gets poked twice (squash + giggly ^^), hops; then Idle
         attn.t = 0; attn.fired = {}; attn.idle = 0;
-        schedule(NUDGE.dur, () => { if (state === 'tapme') setState('idle'); });
+        schedule(NUDGE.dur, 'backToIdle', 'tapme');
         break;
       case 'happy':
         // big ^^ and a grin, a bouncy hop and a wiggle; then Idle
         hop(2.9);
-        schedule(HAPPY_HOLD, () => { if (state === 'happy') setState('idle'); });
+        schedule(HAPPY_HOLD, 'backToIdle', 'happy');
         break;
       case 'wishlist':
         // heart eyes, a happy hop and hearts popping out from behind, then Idle
         popHearts();
         hop(2.4);
         m.nodV -= 0.8;
-        schedule(WISHLIST_HOLD, () => { if (state === 'wishlist') setState('idle'); });
+        schedule(WISHLIST_HOLD, 'backToIdle', 'wishlist');
         break;
       default:
         if (prev === 'sleepy') hop(3.6);
@@ -1610,11 +1628,7 @@ function updateIntro(dt) {
     intro.greeted = true;
     setState('greeting', { quiet: true, intro: true });
     hop(2.2);
-    schedule(GREET_FOR, () => {
-      if (state !== 'greeting') return;
-      setState('idle');
-      schedule(0.2, () => { if (state === 'idle') setVisor(true, { slow: true }); });   // settles in, then the visor glides down
-    });
+    schedule(GREET_FOR, 'greetEnd');                  // melt into idle, then the visor glides down
   }
   if (ps >= 1 && pr >= 1) endIntro();
 }
@@ -1729,7 +1743,7 @@ function update(dt) {
   const t = simT;
   stateTime += dt;
   for (let i = scripts.length - 1; i >= 0; i--) {
-    if (stateTime >= scripts[i].at) { const s = scripts[i]; scripts.splice(i, 1); s.fn(); }
+    if (stateTime >= scripts[i].at) { const s = scripts[i]; scripts.splice(i, 1); SCRIPTS[s.name]?.(s.arg); }
   }
 
   // hover height: a gentle bob, or sitting on the floor when asleep
@@ -1850,7 +1864,10 @@ function setPose(pose = {}, { instant = false } = {}) {
   if (typeof pose.visorDown === 'boolean' && hel.on) setVisor(pose.visorDown);
   if (instant) for (let i = 0; i < 120; i++) update(1 / 60);
 }
+// The picture is of the bot as it is right now (posed first, so it matches getFrame() even if a
+// touch has just changed it since the last drawn frame).
 function snapshot(type = 'image/png') {
+  update(0);
   renderer.render(scene, camera);
   return canvas.toDataURL(type);
 }
@@ -1876,6 +1893,150 @@ function frame() {
   rafId = requestAnimationFrame(frame);
 }
 
+// ─── frames: save the whole animation at one instant and resume from it ──
+// getFrame() is plain JSON: the clock, motion springs, intro, idle gaze, eye
+// look, face morph and override, blink, pending one-shots, the visor hinge, the
+// helmet off / on move, sunglasses, Yellow Friday, the "tap me" nudge, super
+// angry's sulk and any wishlist hearts in flight. setFrame(frame) puts a fresh page at exactly that instant so it
+// carries on from there. The face is rebuilt from the state (plus the face a
+// morph started from), so a frame stays small. Returns false (and changes
+// nothing) for an unusable frame.
+const FRAME_VERSION = 3;
+const round = (x) => Math.round(x * 1000) / 1000;
+const packPts = (pts) => pts.map(([x, y]) => [round(x), round(y)]);
+const FACE_NUMS = ['glint', 'lip', 'cheeks', 'blink', 'flush', 'brow', 'heart'];
+const packFace = (f) => {
+  const out = { eyes: f.eyes.map((e) => ({ a: packPts(e.a), b: packPts(e.b), w: round(e.w) })), mouth: { a: packPts(f.mouth.a), w: round(f.mouth.w) } };
+  FACE_NUMS.forEach((k) => { out[k] = round(f[k] || 0); });
+  return out;
+};
+const isPts = (pts) => Array.isArray(pts) && pts.length === NP && pts.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
+const isFace = (f) => !!f && Array.isArray(f.eyes) && f.eyes.length === 2 &&
+  f.eyes.every((e) => e && isPts(e.a) && isPts(e.b) && Number.isFinite(e.w)) &&
+  !!f.mouth && isPts(f.mouth.a) && Number.isFinite(f.mouth.w) &&
+  FACE_NUMS.every((k) => Number.isFinite(f[k]));
+// copy the fields of `from` that have the same type as in `into`
+const assignSame = (into, from) => {
+  if (!from || typeof from !== 'object') return;
+  Object.keys(into).forEach((k) => {
+    if (typeof from[k] !== typeof into[k]) return;
+    if (typeof from[k] === 'number' && !Number.isFinite(from[k])) return;
+    into[k] = from[k];
+  });
+};
+const num = (x, fallback) => (Number.isFinite(x) ? x : fallback);
+const oneOf = (x, list, fallback) => (list.includes(x) ? x : fallback);
+const isState = (k) => STATES.some((s) => s.key === k);
+const isFaceKind = (k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(EYE_SET, k);
+// the face the current morph is heading to (or the face, when there's no morph)
+const targetFace = () => (faceOverride ? faceSpecKind(faceOverride) : faceSpec(state));
+
+function getFrame() {
+  return {
+    v: FRAME_VERSION,
+    simT, acc, state, stateTime, prevState, prevStateTime, poseBlend, eyeOpen, blinkT, nextBlink, introRun, faceOverride,
+    morph: morph && { via: !!morph.via, fromPill: !!morph.fromPill, t: morph.t, from: packFace(morph.from) },
+    scripts: scripts.map(({ at, name, arg }) => (arg === undefined ? { at, name } : { at, name, arg })),
+    motion: { ...m, dragging: false, dragVel: 0 },
+    intro: { ...intro },
+    gaze: { ...gaze },
+    eyeLook: { ...eyeLook },
+    visor: helmet.getVisor(),
+    hel: { on: hel.on, anim: hel.anim, t: hel.t, bare: hel.bare, focus: hel.focus, thE: hel.thE, fired: { ...(hel.fired || {}) } },
+    sun: { phase: sun.phase, t: sun.t, restoreHelmet: sun.restoreHelmet, aFar: sun.aFar },
+    attn: { idle: attn.idle, next: attn.next, t: attn.t, fired: { ...attn.fired } },
+    sa: { ...sa },
+    homeOffset,
+    yf: { phase: yf.phase, t: yf.t, amt: yf.amt, tf: yf.tf, helm: yf.helm },
+    hearts: hearts.map(({ userData: u }) => ({ age: u.age, dx: u.dx, dy: u.dy, size: u.size, reach: u.reach, rot: u.rot, origin: u.origin.toArray() })),
+  };
+}
+
+function setFrame(f) {
+  if (!f || typeof f !== 'object' || f.v !== FRAME_VERSION || !isState(f.state)) return false;
+  simT = num(f.simT, 0);
+  acc = THREE.MathUtils.clamp(num(f.acc, 0), 0, H);
+  state = f.state;
+  stateTime = num(f.stateTime, 0);
+  prevState = isState(f.prevState) ? f.prevState : state;
+  prevStateTime = num(f.prevStateTime, 0);
+  poseBlend = THREE.MathUtils.clamp(num(f.poseBlend, 1), 0, 1);
+  eyeOpen = num(f.eyeOpen, 1);
+  blinkT = num(f.blinkT, -1);
+  nextBlink = num(f.nextBlink, 2.5);
+  introRun = f.introRun === true;
+  faceOverride = isFaceKind(f.faceOverride) ? f.faceOverride : null;
+  faceCur = targetFace();
+  morph = f.morph && isFace(f.morph.from)
+    ? { via: !!f.morph.via, fromPill: !!f.morph.fromPill, t: THREE.MathUtils.clamp(num(f.morph.t, 1), 0, 1), from: f.morph.from, to: faceCur }
+    : null;
+  scripts.length = 0;
+  (Array.isArray(f.scripts) ? f.scripts : []).forEach((s) => {
+    if (s && SCRIPTS[s.name] && Number.isFinite(s.at)) scripts.push({ at: s.at, name: s.name, arg: s.arg });
+  });
+  assignSame(m, f.motion);
+  m.dragging = false;
+  m.dragVel = 0;
+  assignSame(intro, f.intro);
+  assignSame(gaze, f.gaze);
+  assignSame(eyeLook, f.eyeLook);
+  helmet.setVisor(f.visor);
+  // helmet off / on
+  const h = f.hel || {};
+  hel.on = h.on !== false;
+  hel.anim = oneOf(h.anim, ['on', 'off'], null);
+  hel.t = num(h.t, 0);
+  hel.bare = num(h.bare, hel.on ? 0 : 1);
+  hel.focus = num(h.focus, 0);
+  hel.thE = num(h.thE, 1.6);
+  hel.fired = {};
+  if (h.fired && typeof h.fired === 'object') Object.keys(h.fired).forEach((k) => { if (h.fired[k] === true) hel.fired[k] = true; });
+  if (!hel.anim) placeHelmet(helmet.group, 0, 0, 1);
+  // sunglasses
+  const su = f.sun || {};
+  sun.phase = oneOf(su.phase, ['wait', 'in', 'on', 'out'], null);
+  sun.t = num(su.t, 0);
+  sun.restoreHelmet = su.restoreHelmet === true;
+  sun.aFar = num(su.aFar, -Math.PI - 0.2);
+  shades.visible = sun.phase === 'in' || sun.phase === 'on' || sun.phase === 'out';
+  placeShades(shades, 0, 0);
+  shades.rotation.set(0, 0, 0);
+  // "tap me" nudge
+  const at = f.attn || {};
+  attn.idle = num(at.idle, 0);
+  attn.next = num(at.next, NUDGE.after);
+  attn.t = num(at.t, -1);
+  attn.fired = {};
+  if (at.fired && typeof at.fired === 'object') Object.keys(at.fired).forEach((k) => { if (at.fired[k] === true) attn.fired[k] = true; });
+  // super angry
+  assignSame(sa, f.sa);
+  sa.phase = f.sa && oneOf(f.sa.phase, ['fury', 'sulk', 'calm'], null) || null;
+  homeOffset = num(f.homeOffset, 0);
+  // Yellow Friday
+  const y = f.yf || {};
+  yf.phase = oneOf(y.phase, ['off', 'text', 'back'], null);
+  yf.t = num(y.t, 0);
+  yf.amt = yf.phase ? THREE.MathUtils.clamp(num(y.amt, 0), 0, 1) : 0;
+  yf.tf = yf.phase && Number.isFinite(y.tf) ? y.tf : null;
+  yf.helm = !!yf.phase && y.helm === true;
+  if (!yf.phase) { uniforms.uYF.value = 0; uniforms.uYFText.value = 0; }
+  // wishlist hearts in flight
+  hearts.splice(0).forEach((sp) => { scene.remove(sp); sp.material.dispose(); });
+  (Array.isArray(f.hearts) ? f.hearts : []).forEach((u) => {
+    if (!u || !['age', 'dx', 'dy', 'size', 'reach', 'rot'].every((k) => Number.isFinite(u[k])) || !Array.isArray(u.origin) || !u.origin.every(Number.isFinite)) return;
+    addHeart({ age: u.age, dx: u.dx, dy: u.dy, size: u.size, reach: u.reach, rot: u.rot, origin: new THREE.Vector3().fromArray(u.origin) });
+  });
+  gesture = null;
+  canvas.classList.remove('grabbing');
+  // redraw the face as it was (a blink or morph redraws it in update below)
+  drawFace(faceCur, blinkT >= 0 ? Math.max(0, eyeOpen) : 1);
+  update(0);                                          // pose everything without moving time
+  syncVisor();
+  syncHelmetBtn();
+  syncNav();
+  return true;
+}
+
 drawFace(faceCur, 1);
 setState('idle', { quiet: true });
 introRun = true;                                      // the page opens on the intro
@@ -1883,4 +2044,4 @@ syncNav();
 rafId = requestAnimationFrame(frame);
 
 // small hook for automated checks
-window.orbi = { on, getPose, setPose, skipIntro: endIntro, snapshot, pause, resume, get ready() { return ready; }, sa, superAngrySwipe, attn, shades, sun, setState, setHelmet, hel, eyeLook, faceCur: () => faceCur, wishlist: () => pickState('wishlist'), yellowFriday: () => pickState('yellowfriday'), yf, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };
+window.orbi = { on, getPose, setPose, skipIntro: endIntro, snapshot, pause, resume, get ready() { return ready; }, sa, superAngrySwipe, attn, shades, sun, setState, setHelmet, hel, eyeLook, faceCur: () => faceCur, wishlist: () => pickState('wishlist'), yellowFriday: () => pickState('yellowfriday'), yf, nudge, helmet, toggleVisor, advance: update, getFrame, setFrame, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };

@@ -109,6 +109,28 @@ browser builds and draws.
 - **Shading** — lacquered candy finish (clear coat, inner glow and a brand-tinted edge glow), studio environment lighting, analytic helmet-on-ball occlusion;
   no drop or contact shadows under the bot.
 
+## Frames (save and resume)
+
+`window.orbi.getFrame()` returns the whole animation at that instant as plain JSON (~3–5 KB):
+the clock, motion springs, intro, idle gaze and eye look, face morph and override, blink,
+pending one-shots (a mood's hold before Idle, the angry cool-off, the intro's hand-off), the
+visor hinge, the helmet off / on move, sunglasses, Yellow Friday, the "tap me" nudge, super
+angry's sulk and wishlist hearts in flight. `window.orbi.setFrame(frame)` puts a freshly loaded
+page at exactly that instant, so it carries on from there; it returns `false` and changes nothing
+for a frame it can't use (another `v`, unknown state). A page resumed from a frame draws the same
+pixels as the page it was saved from.
+
+When adding animation state, keep frames complete:
+
+- Timed one-shots are named entries in `SCRIPTS` (`schedule(at, 'name', arg)`), not closures, so
+  they can be saved. A new one needs an entry there.
+- New per-instant state (a phase, a timer, a spring) goes into `getFrame` / `setFrame`; bump
+  `FRAME_VERSION` when the shape changes, so an old frame falls back to the pose instead of
+  restoring half a state.
+
+The noon widget sends the frame of the tap with `openLandingPage` and resumes the landing page's
+live copy from it (`window.noonWidgetConfig.frame`, see the noon app bridge below).
+
 ## Files
 
 - `index.html` — page + state bar
@@ -138,7 +160,8 @@ gestures, intro — works as in the demo.
 | `getPose()` | `{ state, helmetOn, visorDown }` — `state` is one of the mood keys (`idle`, `greeting`, `angry`, `wishlist`, `yellowfriday`, `curious`, `happy`, `sunglass`, `tapme`, `superangry`); `visorDown` only matters while `helmetOn`. |
 | `setPose(pose, { instant })` | Restores a pose from `getPose()` and ends the intro. One-off shows and asks (Yellow Friday, Tap me, Super angry) come back as Idle. `instant: true` settles helmet, visor and face right away instead of animating. |
 | `skipIntro()` | Ends the intro now. |
-| `snapshot(type?)` | Renders and returns the current frame as a data URL (`image/png` by default). |
+| `getFrame()` / `setFrame(frame)` | The whole animation at this instant as plain JSON, and resuming a fresh page at exactly that instant (see "Frames" above). `setFrame` returns `false` and changes nothing for a frame it can't use (e.g. from another `FRAME_VERSION`). |
+| `snapshot(type?)` | Renders and returns the current frame as a data URL (`image/png` by default). It poses the bot first, so it matches `getFrame()` taken right after. |
 | `pause()` / `resume()` | Stops / restarts the render loop (no CPU / GPU use while paused); resume continues without a jump. |
 | `ready` | `true` once the first frame is drawn. |
 
@@ -154,19 +177,21 @@ Golu → app, via `window.ReactNativeWebView.postMessage(JSON.stringify(message)
 
 ```json
 { "namespace": "streamGateApi", "event": "contentReady", "payload": {} }
-{ "namespace": "streamGateApi", "event": "openLandingPage", "payload": { "snapshot": "data:image/png;base64,…", "pose": { "state": "idle", "helmetOn": true, "visorDown": false } } }
+{ "namespace": "streamGateApi", "event": "openLandingPage", "payload": { "snapshot": "data:image/png;base64,…", "pose": { "state": "idle", "helmetOn": true, "visorDown": false }, "frame": { "v": 3, "simT": 3.61, "…": "…" } } }
 ```
 
 - `contentReady` — sent once, after the first frame. The landing page shows the snapshot until this arrives,
   then swaps to the live Golu.
 - `openLandingPage` — sent on every tap. `snapshot` is the frame the app flies into the landing page;
-  `pose` is restored on the landing page copy.
+  `frame` (`getFrame()` at the tap, before Golu's own bounce) is what the landing page copy resumes from;
+  `pose` is the fallback for a copy that can't use the frame.
 
 App → Golu:
 
-- `window.noonWidgetConfig = { skipIntro?: boolean, pose?: Pose }`, set before the page loads. Empty on the home
-  page; on the landing page it's `{ skipIntro: true, pose }` with the pose from the tap, applied with
-  `setPose(pose, { instant: true })`.
+- `window.noonWidgetConfig = { skipIntro?: boolean, pose?: Pose, frame?: Frame }`, set before the page loads.
+  Empty on the home page; on the landing page it's `{ skipIntro: true, pose, frame }` from the tap. With a
+  usable `frame` the copy resumes from it (`setFrame(frame)`) and carries on from the tapped instant;
+  otherwise it falls back to `skipIntro()` + `setPose(pose, { instant: true })`.
 - `{ "namespace": "streamGateApi", "event": "visibilityChange", "result": { "visible": false } }`, posted to `window`
   (`message` event) whenever the app hides or shows the bot (landing page open, app in background, screen
   change). `false` pauses, `true` resumes; a pause before the first frame is ignored so `contentReady` always

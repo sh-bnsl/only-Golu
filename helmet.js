@@ -775,6 +775,16 @@ export function createHelmet() {
     get visorDown() { return v.target === 0; },
     setVisorDown(down, { slow = false } = {}) { v.target = down ? 0 : VISOR_UP; v.spring = slow ? SLOW : SNAPPY; },
     toggleVisor() { v.target = v.target === 0 ? VISOR_UP : 0; v.spring = SNAPPY; return v.target === 0; },
+    // the hinge at one instant (angle, speed, where it's heading, which spring), for saving / resuming a frame
+    getVisor() { return { a: v.a, va: v.va, down: v.target === 0, slow: v.spring === SLOW }; },
+    setVisor(s) {
+      if (!s || typeof s !== 'object') return;
+      if (typeof s.down === 'boolean') v.target = s.down ? 0 : VISOR_UP;
+      v.spring = s.slow === true ? SLOW : SNAPPY;
+      if (Number.isFinite(s.a)) v.a = s.a;
+      if (Number.isFinite(s.va)) v.va = s.va;
+      visor.pivot.rotation.x = v.a;
+    },
     setAccent(color) { applyAccent(color); },
     setLogoWhite(v) { LOGO_WHITE.value = v; },
     update(dt) {
