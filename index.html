@@ -44,6 +44,11 @@
   #states button.visor[aria-pressed="true"] { color: var(--ink); background: rgba(29, 37, 57, .08); }
   #states button.bot[aria-pressed="true"] { color: #fff; background: var(--ink); }
 
+  /* embedded (window.goluConfig = { embed: true }): transparent, no state bar */
+  html.embed, html.embed body { background: transparent; }
+  html.embed nav, html.embed #states { display: none; }
+  html.embed #stage { cursor: default; }
+
   @media (max-width: 640px) {
     #states { bottom: 16px; }
     #states button { padding: 8px 9px; }

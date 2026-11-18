@@ -11,7 +11,8 @@ No build step. Serve the folder with any static server and open it:
 python3 -m http.server 8000
 ```
 
-then visit http://localhost:8000.
+then visit http://localhost:8000. (The build in [Build](#build) is only for the single-file pages the noon app
+loads; the demo never needs it.)
 
 ## Look and mesh
 
@@ -115,3 +116,108 @@ browser builds and draws.
 - `helmet.js` — the helmet
 - `assets/yf-strip.png` — the Yellow Friday lettering, unwrapped from the Lottie
 - `vendor/` — three.js r186
+- `bridge/noon-bridge.js` — noon app bridge (only in the widget build, see below)
+- `scripts/build.mjs` — single-file build (`npm run build:html`)
+
+## Embedding (host API)
+
+Golu can be embedded in another page or app. The noon app uses it as its **spotlight touchpoint**: a small
+floating Golu (117 × 102 pt by default, transparent background) on the home page, inside a WebView. Tapping it
+opens a landing page where a second, live copy of Golu flies in and stays interactive.
+
+**Embed mode.** Set `window.goluConfig = { embed: true }` before `main.js` runs: page and canvas become
+transparent (`scene.background = null`) and the state bar is hidden (`html.embed`). Everything else — moods,
+gestures, intro — works as in the demo.
+
+**Host API.** Hosts should use only these on `window.orbi`; the rest of `window.orbi` (`intro`, `motion`, `hel`,
+`helmet`, `setState`, …) is internal, used by the demo and checks, and may change at any time:
+
+| | |
+|---|---|
+| `on('tap' \| 'ready', fn)` | `tap`: a tap on the bot — a press shorter than 300 ms that moved less than 6 px, never a drag or swipe; fires before Golu's own bounce. `ready`: the first frame is drawn (fires at once if it already was). Returns an unsubscribe function. |
+| `getPose()` | `{ state, helmetOn, visorDown }` — `state` is one of the mood keys (`idle`, `greeting`, `angry`, `wishlist`, `yellowfriday`, `curious`, `happy`, `sunglass`, `tapme`, `superangry`); `visorDown` only matters while `helmetOn`. |
+| `setPose(pose, { instant })` | Restores a pose from `getPose()` and ends the intro. One-off shows and asks (Yellow Friday, Tap me, Super angry) come back as Idle. `instant: true` settles helmet, visor and face right away instead of animating. |
+| `skipIntro()` | Ends the intro now. |
+| `snapshot(type?)` | Renders and returns the current frame as a data URL (`image/png` by default). |
+| `pause()` / `resume()` | Stops / restarts the render loop (no CPU / GPU use while paused); resume continues without a jump. |
+| `ready` | `true` once the first frame is drawn. |
+
+If you change any of these, keep the old behaviour working or bump the noon bridge with it (below).
+
+### noon app bridge
+
+`bridge/noon-bridge.js` connects the host API to the noon app's WebView message bridge (`streamGateApi`).
+**It is the contract the noon app relies on** — if it breaks, taps stop opening the landing page or the landing
+page Golu doesn't match. It is only included in `dist/only-golu.widget.html`.
+
+Golu → app, via `window.ReactNativeWebView.postMessage(JSON.stringify(message))`:
+
+```json
+{ "namespace": "streamGateApi", "event": "contentReady", "payload": {} }
+{ "namespace": "streamGateApi", "event": "openLandingPage", "payload": { "snapshot": "data:image/png;base64,…", "pose": { "state": "idle", "helmetOn": true, "visorDown": false } } }
+```
+
+- `contentReady` — sent once, after the first frame. The landing page shows the snapshot until this arrives,
+  then swaps to the live Golu.
+- `openLandingPage` — sent on every tap. `snapshot` is the frame the app flies into the landing page;
+  `pose` is restored on the landing page copy.
+
+App → Golu:
+
+- `window.noonWidgetConfig = { skipIntro?: boolean, pose?: Pose }`, set before the page loads. Empty on the home
+  page; on the landing page it's `{ skipIntro: true, pose }` with the pose from the tap, applied with
+  `setPose(pose, { instant: true })`.
+- `{ "namespace": "streamGateApi", "event": "visibilityChange", "result": { "visible": false } }`, posted to `window`
+  (`message` event) whenever the app hides or shows the bot (landing page open, app in background, screen
+  change). `false` pauses, `true` resumes; a pause before the first frame is ignored so `contentReady` always
+  arrives.
+
+Changing the contract: adding fields is safe; renaming or removing events or fields needs a matching app
+release, so ship it under a new CDN version and agree on it with the app team first.
+
+### Rules for the hosted page
+
+- **No external requests.** The app loads the page as an HTML string, so relative URLs and network fetches don't
+  work. Put files in `assets/` and reference them in the code as a string literal `'assets/…'`; the build inlines
+  every such file that exists as a data URI.
+- **Keep it light.** It runs in a WebView on low-end phones too: watch triangle count, texture sizes (some GPUs cap
+  textures at 4096 px; bigger ones are scaled down) and per-frame work.
+- **Transparent in embed mode.** Don't paint a page or canvas background when `html.embed` is set.
+
+## Build
+
+Needs Node 18+.
+
+```bash
+npm install
+npm run build:html
+```
+
+writes two self-contained pages to `dist/` (three.js and the scripts bundled, tree-shaken and minified; CSS and
+`assets/` files inlined; no external requests):
+
+- `only-golu.html` — the demo page, as when served.
+- `only-golu.widget.html` — embed mode + the noon bridge; **this is what the noon app loads.**
+
+The script is called `build:html` (not `build`) so a static deploy such as Vercel doesn't run it.
+
+### Try the widget build locally
+
+Open `dist/only-golu.widget.html` in a browser (transparent page, no bar), then in the console:
+
+```js
+window.ReactNativeWebView = { postMessage: (m) => console.log(JSON.parse(m)) };
+```
+
+Tap Golu: an `openLandingPage` message with `snapshot` and `pose` is logged; drags and swipes log nothing. To
+check the landing page copy, set `window.noonWidgetConfig = { skipIntro: true, pose: { state: 'sunglass', helmetOn: false } }`
+in a `<script>` before the bundle and reload.
+
+### Release to the noon app
+
+1. `npm run build:html`.
+2. Upload `dist/only-golu.widget.html` to a **new** versioned folder on the noon CDN,
+   `…/s/app/com/noon/kinetics/golu/vN/only-golu.widget.html` — never overwrite a version (the CDN caches for an hour,
+   and older app builds may still point at it).
+3. Point the app at it: the spotlight widget's `touchpoint.url` in the CMS, or the app's default
+   (`NOON_SPOTLIGHT_DEFAULT_HTML_URL` in bappzaar).
