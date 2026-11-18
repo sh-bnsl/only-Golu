@@ -49,6 +49,13 @@ renderer.setClearColor(0x000000, 0);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);   // matches the page
+// Embedded in another app (window.goluConfig = { embed: true }, set before this
+// script runs): transparent page and canvas, no state bar. See "Embedding" in the README.
+const HOST = window.goluConfig || {};
+if (HOST.embed) {
+  scene.background = null;
+  document.documentElement.classList.add('embed');
+}
 const pmrem = new THREE.PMREMGenerator(renderer);
 
 // Studio environment: a dim warm gradient dome plus one large softbox up-left
@@ -1324,6 +1331,7 @@ canvas.addEventListener('pointerup', endGesture);
 canvas.addEventListener('pointercancel', endGesture);
 
 function tap() {
+  emit('tap');
   if (state === 'sleepy') { setState('idle'); return; }
   hop(2.6);
   m.nodV += 1.2;
@@ -1646,17 +1654,73 @@ function update(dt) {
 
 }
 
+// ─── host API: events, pose, pause ───────────────────────────────────────
+// What an embedding app may rely on (see "Embedding" in the README). Hosts
+// should use only these, not the internals also exposed on window.orbi.
+const listeners = { tap: new Set(), ready: new Set() };
+let ready = false;          // true once the first frame has been drawn
+let paused = false;
+let rafId = 0;
+function emit(name, data) {
+  listeners[name]?.forEach((fn) => { try { fn(data); } catch (e) { console.error(e); } });
+}
+// on('tap' | 'ready', fn) → unsubscribe. 'ready' fires at once if it already happened.
+function on(name, fn) {
+  const set = listeners[name];
+  if (!set) return () => {};
+  set.add(fn);
+  if (name === 'ready' && ready) fn();
+  return () => set.delete(fn);
+}
+// One-off shows that shouldn't be restored as a resting pose.
+const ONE_OFF_STATES = new Set(['yellowfriday']);
+function getPose() {
+  return { state, helmetOn: hel.on, visorDown: helmet.visorDown };
+}
+// Restores a pose from getPose(). instant: settle it now (helmet, visor, face)
+// instead of animating, e.g. when a second copy should match the first.
+function setPose(pose = {}, { instant = false } = {}) {
+  endIntro();
+  if (typeof pose.helmetOn === 'boolean' && pose.helmetOn !== hel.on) {
+    setHelmet(pose.helmetOn);
+    if (instant) finishHelmetMove();
+  }
+  const next = typeof pose.state === 'string' ? (ONE_OFF_STATES.has(pose.state) ? 'idle' : pose.state) : null;
+  if (next && next !== state) setState(next, { quiet: true });
+  if (typeof pose.visorDown === 'boolean' && hel.on) setVisor(pose.visorDown);
+  if (instant) for (let i = 0; i < 120; i++) update(1 / 60);
+}
+function snapshot(type = 'image/png') {
+  renderer.render(scene, camera);
+  return canvas.toDataURL(type);
+}
+// Stops the render loop while the host hides the bot (saves battery); resume() picks up without a jump.
+function pause() {
+  paused = true;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+}
+function resume() {
+  if (!paused) return;
+  paused = false;
+  clock.getDelta();
+  rafId = requestAnimationFrame(frame);
+}
+
 function frame() {
+  rafId = 0;
+  if (paused) return;
   update(Math.min(clock.getDelta(), 1 / 30));
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
+  if (!ready) { ready = true; emit('ready'); }
+  rafId = requestAnimationFrame(frame);
 }
 
 drawFace(faceCur, 1);
 setState('idle', { quiet: true });
 introRun = true;                                      // the page opens on the intro
 syncNav();
-requestAnimationFrame(frame);
+rafId = requestAnimationFrame(frame);
 
 // small hook for automated checks
-window.orbi = { shades, sun, setState, setHelmet, hel, eyeLook, faceCur: () => faceCur, wishlist: () => pickState('wishlist'), yellowFriday: () => pickState('yellowfriday'), yf, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };
+window.orbi = { on, getPose, setPose, skipIntro: endIntro, snapshot, pause, resume, get ready() { return ready; }, shades, sun, setState, setHelmet, hel, eyeLook, faceCur: () => faceCur, wishlist: () => pickState('wishlist'), yellowFriday: () => pickState('yellowfriday'), yf, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };

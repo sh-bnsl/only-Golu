@@ -1,0 +1,11 @@
+{
+  "name": "only-golu",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:html": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.0"
+  }
+}
