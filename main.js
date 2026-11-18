@@ -17,7 +17,8 @@ import { createHelmet, SURFACE_GLSL } from './helmet.js';
 const R = 1;                    // body radius (Figma body = 240px → 120px = 1 unit)
 const HOVER_Y = 0;              // resting centre height while floating
 const FLOOR_Y = -1.18;          // Figma: body bottom 270, contact shadow 288 → 0.15R gap
-const GRAVITY = 17;              // low: a light, floaty toy ball
+const GRAVITY = 30;              // a bouncy toy: quick up, quick down (was 17 — too floaty)
+const HOP_K = 1.5;               // every hop's launch speed × this (higher, snappier hops at the heavier gravity)
 const DRAG_YAW = 0.0105;        // rad per px of horizontal drag (~360° over 600px)
 const DRAG_PITCH = 0.006;       // rad per px of vertical drag (tilt while swiping the visor)
 const MAX_TILT = 0.5;
@@ -31,7 +32,7 @@ const STATES = [
   { key: 'yellowfriday', label: 'Yellow Friday' },
   { key: 'curious',  label: 'Curious' },
   { key: 'happy',    label: 'Happy' },
-  { key: 'wow',      label: 'Wow', hidden: true },   // Happy's first beat (lights the Happy chip)
+  { key: 'sunglass', label: 'Sunglasses' },
 ];
 const BAR_STATES = STATES.filter(s => !s.hidden);
 
@@ -187,21 +188,20 @@ const LEFT_EYE = {
   // classic sin³ heart curve pinches into a thin spike at the tip).
   // ~30 × 25 Figma px, centred on the pill eye.
   heart:    () => ({ a: heartHalf(-1), b: heartHalf(1), w: 4 }),
-  // curious: lopsided — this eye a touch narrowed, the other (R) opened big and raised
+  // curious: lopsided — this eye a touch narrowed, the other (R) opened big and raised (no mouth)
   curious:  () => { const l = linePts(-32, -15, -32, 3); const r = linePts(32, -25, 32, 7);
     return { a: l, b: l, w: 25, R: { a: r, b: r, w: 30 } }; },
-  // wow: eyes opened wide (taller, wider pills) with the brows shot up (stroke b)
-  // (brows kept low enough to clear the helmet's liner, which hides anything above y ≈ −38)
-  wow:      () => ({ a: linePts(-32, -14, -32, 8), b: arcPts(-32, -25.5, 11.5, Math.PI + 0.75, Math.PI * 2 - 0.75), w: 33 }),
+  // cool: behind the shades — the eyes are hidden; the mood is in the smirk
+  cool:     () => { const l = linePts(-32, -20, -32, 6); return { a: l, b: l, w: 28 }; },
   // squeeze: eyes screwed shut, > <  (helmet coming off / about to land)
   squeeze:  () => ({ a: linePts(-44, -17, -23, -8), b: linePts(-23, -8, -44, 1), w: 7 }),
-  // lookUp: round eyes glancing up at something above (the helmet coming in)
-  lookUp:   () => { const l = linePts(-31, -28, -31, -5); return { a: l, b: l, w: 27 }; },
+  // lookUp: the normal pill eyes, just raised — glancing up at something above
+  lookUp:   () => { const l = linePts(-32, -28, -32, -2); return { a: l, b: l, w: 28 }; },
   // happy: big ^^ (a touch larger and bolder than the greeting's)
   happy:    () => { const l = arcPts(-32, -6, 14, Math.PI + 0.36, Math.PI * 2 - 0.36); return { a: l, b: l, w: 7.5 }; },
 };
 const EYE_SET = LEFT_EYE;
-const FACE_OF = { idle: 'pill', working: 'pill', greeting: 'greeting', error: 'error', dizzy: 'dizzy', sleepy: 'sleepy', angry: 'angry', wishlist: 'heart', curious: 'curious', wow: 'wow', happy: 'happy' };
+const FACE_OF = { idle: 'pill', working: 'pill', greeting: 'greeting', error: 'error', dizzy: 'dizzy', sleepy: 'sleepy', angry: 'angry', wishlist: 'heart', curious: 'curious', happy: 'happy', sunglass: 'cool' };
 const mirror = (pts) => pts.map(([x, y]) => [-x, y]);
 // Mouth: only the greeting smiles; every other face keeps it collapsed to a
 // point (width 0) at the same spot, so the smile grows out of / shrinks into
@@ -211,9 +211,8 @@ const MOUTH = {
   frown: () => ({ a: arcPts(0, 29, 9.5, Math.PI + 0.6, Math.PI * 2 - 0.6), w: 5.5 }),
   none: () => ({ a: linePts(0, 23, 0, 23), w: 0 }),
   grin: () => ({ a: arcPts(0, 11, 13.5, Math.PI - 0.62, 0.62), w: 6.5 }),               // happy: a big smile
-  o:    () => ({ a: arcPts(0, 31, 8, -Math.PI / 2, Math.PI * 1.5), w: 5.5 }),             // wow: a round "O"
-  hmm:  () => ({ a: linePts(-5, 26, 7, 23.5), w: 4.5 }),                                 // curious: a small sideways "hmm"
-  tight: () => ({ a: linePts(-7, 27, 7, 27), w: 5 }),                                    // squeeze: a pressed-shut mouth
+  tight: () => ({ a: linePts(-7, 27, 7, 27), w: 5 }),
+  smirk: () => ({ a: arcPts(5, 36, 10, Math.PI - 0.35, 0.75), w: 5 }),                   // cool: a lopsided half-smile, low (below the shades)                                    // squeeze: a pressed-shut mouth
   ooh:  () => ({ a: arcPts(0, 27, 5, -Math.PI / 2, Math.PI * 1.5), w: 4.5 }),            // lookUp: a small "ooh"
 };
 const MOUTH_SET = MOUTH;
@@ -222,14 +221,14 @@ function faceSpecKind(kind) {
   const L = EYE_SET[kind]();
   const R = L.R || { a: mirror(L.a), b: mirror(L.b), w: L.w };   // most faces mirror; curious is lopsided
   const pill = kind === 'pill' ? 1 : 0;
-  const pillish = pill || kind === 'curious' || kind === 'wow' || kind === 'lookUp' ? 1 : 0;   // round eyes: morph straight across, and blink
+  const pillish = pill || kind === 'curious' || kind === 'lookUp' || kind === 'cool' ? 1 : 0;   // round eyes: morph straight across, and blink
   const happy = kind === 'greeting' ? 1 : 0;
   const angry = kind === 'angry' ? 1 : 0;
   const heart = kind === 'heart' ? 1 : 0;
   const mouth = happy || heart ? MOUTH_SET.smile() : angry ? MOUTH_SET.frown()
-    : kind === 'happy' ? MOUTH_SET.grin() : kind === 'wow' ? MOUTH_SET.o() : kind === 'curious' ? MOUTH_SET.hmm()
-    : kind === 'squeeze' ? MOUTH_SET.tight() : kind === 'lookUp' ? MOUTH_SET.ooh() : MOUTH_SET.none();
-  const brow = angry || kind === 'wow' ? 1 : 0;
+    : kind === 'happy' ? MOUTH_SET.grin() : kind === 'cool' ? MOUTH_SET.smirk()
+    : kind === 'squeeze' ? MOUTH_SET.tight() : MOUTH_SET.none();
+  const brow = angry;
   // brow width: the angry brow is a thinner stroke than its eye (stroke b)
   // no blush on any face (greeting / intro and wishlist keep just the smile)
   return { eyes: [{ a: L.a, b: L.b, w: L.w }, R], mouth, glint: pill, lip: pill, cheeks: 0, flush: angry, brow, blink: pillish, heart };
@@ -470,6 +469,62 @@ scene.add(body);
 
 const helmet = createHelmet();
 body.add(helmet.group);
+
+// ─── sunglasses ───────────────────────────────────────────────────────────
+// Classic black Ray-Ban Wayfarers, big: a flat front that sits just in front of
+// the face (it doesn't wrap onto the ball — the face's nearest point is z = 1, the
+// front sits at z ≥ 1.05), thick glossy black frames heaviest along the brow,
+// trapezoid lenses (wide at the top with the upswept outer corner, rounded
+// below), a keyhole bridge, and straight arms running back just outside the
+// head. Body space, like the helmet; the whole thing spans the face (~±0.98).
+function buildShades() {
+  const g = new THREE.Group();
+  const frameMat = new THREE.MeshPhysicalMaterial({ color: 0x08080a, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.3 });
+  const lensMat = new THREE.MeshPhysicalMaterial({ color: 0x020203, roughness: 0.05, metalness: 0.3, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.8 });
+  const Z = 1.05, CY = -0.1, LX = 0.47;              // front plane, lens centre height, lens centre x
+  // right lens outline (x outward), Wayfarer trapezoid
+  const lensPath = (sh, k = 1, dy = 0) => {
+    const P = (x, y) => [x * k, y * k + dy];
+    sh.moveTo(...P(-0.4, 0.25));
+    sh.lineTo(...P(0.34, 0.29));                     // the top edge rises toward the outer corner
+    sh.quadraticCurveTo(...P(0.47, 0.3), ...P(0.45, 0.17));
+    sh.quadraticCurveTo(...P(0.42, -0.08), ...P(0.3, -0.21));
+    sh.quadraticCurveTo(...P(0.14, -0.31), ...P(-0.12, -0.28));
+    sh.quadraticCurveTo(...P(-0.33, -0.25), ...P(-0.38, -0.12));
+    sh.quadraticCurveTo(...P(-0.43, 0.06), ...P(-0.4, 0.25));
+    return sh;
+  };
+  const extrude = { depth: 0.05, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 3, curveSegments: 24 };
+  for (const side of [-1, 1]) {
+    const lens = new THREE.Group();
+    // frame: the lens outline grown out (thicker at the top brow), with the lens cut out
+    const outer = lensPath(new THREE.Shape(), 1.17, 0.025);
+    outer.holes.push(lensPath(new THREE.Path()));
+    const frame = new THREE.Mesh(new THREE.ExtrudeGeometry(outer, extrude), frameMat);
+    lens.add(frame);
+    const glass = new THREE.Mesh(new THREE.ShapeGeometry(lensPath(new THREE.Shape()), 24), lensMat);
+    glass.position.z = 0.03;
+    lens.add(glass);
+    lens.scale.x = side;                              // the left one is the mirror image
+    lens.position.set(side * LX, CY, Z);
+    g.add(lens);
+    // arm: from the frame's outer top corner straight back, just outside the head
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.06, 1.25), frameMat);
+    arm.position.set(side * 1.035, CY + 0.25, Z - 0.6);
+    g.add(arm);
+    const hinge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.07), frameMat);   // joins the frame to the arm
+    hinge.position.set(side * 0.99, CY + 0.25, Z + 0.01);
+    g.add(hinge);
+  }
+  // keyhole bridge across the top, between the lenses
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.06), frameMat);
+  bridge.position.set(0, CY + 0.22, Z + 0.025);
+  g.add(bridge);
+  g.visible = false;
+  return g;
+}
+const shades = buildShades();
+body.add(shades);
 const BODY_BOTTOM = R;                               // distance from the centre down to where it sits on the floor
 const ORBIT_UP = 1.55;                               // dizzy beads circle this far above the centre
 
@@ -577,7 +632,9 @@ function updateHearts(dt) {
 // assets/yf-strip.png, scrolling on the Lottie's own curve (YF_S). Then a second
 // 360° turns it back into the bot, and it returns to Idle. No hop either way.
 const YF = {
-  spin: 1.8,                   // s for each 360° — a slow, eased turn (ease-in-out sine)
+  spinIn: 0.5,                 // s for the 360° from bot to ball — quick, eased (ease-in-out sine)
+  spinOut: 0.8,                // s for the 360° from ball back to the bot
+  textRate: 0.75,              // the sale text runs at 0.75× the Lottie's speed (same curve, a bit slower to read)
   morph: [0.12, 0.88],         // spin progress over which it morphs: helmet sinks in, face fades, ball swells
   textAt: 0.62,                // spin progress where the text starts (just before it's fully a ball)
   ballK: 1.22,                 // ball size vs the bot's ball
@@ -611,7 +668,10 @@ const yf = { phase: null, t: 0, amt: 0, base: 0, tf: null };
 let yfHidesHelmet = false;
 const smooth01 = (x) => { x = THREE.MathUtils.clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 // one slow full turn to its left, easing in and out
-const yfSpinAngle = (p) => -Math.PI * 2 * (1 - Math.cos(Math.PI * p)) / 2;
+// one full turn to its left with a quick wind-up the other way and an overshoot snap home (ease-in-out-back)
+const yfSpinAngle = (p) => { const c = 1.25 * 1.525;
+  const e = p < 0.5 ? ((2 * p) ** 2 * ((c + 1) * 2 * p - c)) / 2 : ((2 * p - 2) ** 2 * ((c + 1) * (p * 2 - 2) + c) + 2) / 2;
+  return -Math.PI * 2 * e; };
 const yfMorph = (p) => smooth01((p - YF.morph[0]) / (YF.morph[1] - YF.morph[0]));
 function startYF() {
   finishHelmetMove();
@@ -630,7 +690,7 @@ function updateYF(dt) {
   yf.t += dt;
   let turnLeft = 0;                                   // rad still to turn (text rides on the ball's surface)
   if (yf.phase === 'in' || yf.phase === 'out') {
-    const p = Math.min(1, yf.t / YF.spin);
+    const p = Math.min(1, yf.t / (yf.phase === 'in' ? YF.spinIn : YF.spinOut));
     const prev = m.spin;
     m.spin = yf.base + yfSpinAngle(p);
     m.spinV = dt > 0 ? (m.spin - prev) / dt : 0;        // a gentle lean into the turn
@@ -644,8 +704,12 @@ function updateYF(dt) {
     }
   }
   if (yf.tf != null) {
-    yf.tf += dt * 60;
-    if (yf.phase === 'ball' && yf.tf >= YF.outAt) { yf.phase = 'out'; yf.t = 0; yf.base = 0; yf.tf = null; }
+    yf.tf += dt * 60 * YF.textRate;
+    if (yf.phase === 'ball' && yf.tf >= YF.outAt) {
+      yf.phase = 'out'; yf.t = 0; yf.base = 0; yf.tf = null;
+      // back to Idle with the visor down: close it now, while the helmet is still tucked inside the ball
+      if (hel.on && !helmet.visorDown) { helmet.setVisorDown(true); syncVisor(); }
+    }
   }
   uniforms.uYF.value = yf.amt;
   if (yf.tf != null) {
@@ -668,7 +732,7 @@ function updateYF(dt) {
 // head, and snugs down onto it with a soft settle.
 // One path both ways, at the helmet's real size, which never passes through
 // the head and ends far behind it on the camera's line of sight, hidden.
-const HELM = { flow: 0.75, off: 0.75, lead: 0.12, flowIn: 0.8, on: 1.05 };   // quick: no tug, straight into the flow
+const HELM = { flow: 0.55, off: 0.55, lead: 0.1, flowIn: 0.6, on: 0.82 };    // quick: no tug, straight into the flow
 // The helmet stays its real size the whole time (no stretch, no shrink). It covers
 // more than half the ball, so the only clean way off is straight up its own axis
 // (measured: its closest point never dips below the ball's surface, ≥ 1.003 R, at
@@ -761,31 +825,79 @@ function updateHelmet(dt) {
     const t = (hel.t += dt);
     once('aim', () => { hel.thE = rayTheta(); });     // one flow: up off the head, back over the top, away behind it
     placeFlow(g, flowOff(Math.min(1, t / HELM.flow), _fl));
-    once('ex0', () => setFaceOverride('lookUp'));    // eyes up, watching it go up and over…
-    if (t >= 0.48) once('ex1', () => setFaceOverride('happy'));   // …then a relieved ^^ once it's gone behind
+    once('ex0', () => setFaceOverride('lookUp'));    // normal eyes, just looking up as it goes up and over…
+    if (t >= HELM.off * 0.75) once('ex1', () => setFaceOverride(null));   // …and back to normal once it's gone
     hel.bare = smooth01(t / 0.2);                    // its shade lifts off the head as it goes
-    if (t >= HELM.off) { hel.anim = null; hel.bare = 1; placeHelmet(g, 0, 0); schedule(0.6, () => { if (faceOverride === 'happy') setFaceOverride(null); }); }
+    if (t >= HELM.off) { hel.anim = null; hel.bare = 1; placeHelmet(g, 0, 0); }
   } else if (hel.anim === 'on') {
     const t = (hel.t += dt);
     const tD = HELM.lead + HELM.flowIn;
     if (t < HELM.lead) {                              // (still hidden: Golu settles its gaze first)
       placeHelmetFar(g, FAR_D, 1.6);
-      once('ex0', () => setFaceOverride('lookUp'));  // looks up at it coming, "ooh"
+      once('ex0', () => setFaceOverride('lookUp'));  // normal eyes, looking up at it coming
     } else if (t < tD) {                              // in one flow: from behind, up and over, down onto the head
       once('aim', () => { hel.thE = rayTheta(); });
       placeFlow(g, flowOn((t - HELM.lead) / HELM.flowIn, _fl));
-      if (t >= tD - 0.3) once('ex1', () => setFaceOverride('squeeze'));   // braces for it, > <
     } else {                                          // a soft settle as it fits
-      once('land', () => { m.nodV += 0.8; setFaceOverride('happy'); });   // fits — a happy ^^ "ready!"
+      once('land', () => { m.nodV += 0.8; setFaceOverride(null); });   // fits — eyes back to normal
       placeHelmet(g, 0, 0);
     }
     hel.bare = 1 - smooth01((t - tD + 0.08) / 0.16);
-    if (t >= HELM.on) { hel.anim = null; hel.bare = 0; placeHelmet(g, 0, 0); schedule(0.45, () => { if (faceOverride === 'happy') setFaceOverride(null); }); }
+    if (t >= HELM.on) { hel.anim = null; hel.bare = 0; placeHelmet(g, 0, 0); }
   }
   // Golu holds still while the helmet moves (its idle glances ease out, then back in)
   hel.focus += ((hel.anim ? 1 : 0) - hel.focus) * (1 - Math.exp(-dt * (hel.anim ? 9 : 3)));
   uniforms.uBare.value = hel.bare;
   g.visible = !yfHidesHelmet && (hel.anim === 'on' ? hel.t >= HELM.lead : (hel.on || (hel.anim === 'off' && hel.t < HELM.off)));
+}
+
+// ─── sunglasses mode ──────────────────────────────────────────────────────
+// Sunglasses: the helmet comes off (the usual off move), then the shades drop
+// onto Golu's eyes from above, land with a little bounce and a nod, and it
+// grooves with a cool smirk for SUN.hold s; then (or as soon as another mood is
+// picked) they lift off and, if the mode had taken the helmet off, it goes back on. Straight up/down on the face keeps
+// the shades outside the ball (they only get further from it as they rise).
+const SUN = { drop: 0.42, lift: 0.3, high: 2.1, hold: 2.0 };   // hold: s the shades stay on before they come off
+const sun = { phase: null, t: 0, restoreHelmet: false };
+function startShades() {
+  sun.restoreHelmet = hel.on;
+  if (hel.on) setHelmet(false);
+  Object.assign(sun, { phase: 'wait', t: 0 });
+}
+function stopShades() {
+  if (!sun.phase) return;
+  if (sun.phase === 'wait') { sun.phase = null; shades.visible = false; if (sun.restoreHelmet && !hel.on) setHelmet(true); return; }
+  Object.assign(sun, { phase: 'lift', t: 0, from: shades.position.y });
+}
+function updateShades(dt) {
+  if (!sun.phase) return;
+  sun.t += dt;
+  const s = shades;
+  if (sun.phase === 'wait') {                         // the helmet goes first
+    if (!hel.anim) { sun.phase = 'drop'; sun.t = 0; s.visible = true; s.position.set(0, SUN.high, 0); setFaceOverride('lookUp'); }
+  } else if (sun.phase === 'drop') {                  // falls onto the face, straightening as it comes
+    const k = Math.min(1, sun.t / SUN.drop), e = k * k;
+    s.position.set(0, SUN.high * (1 - e), 0);
+    s.rotation.set(0, 0, 0.18 * (1 - e));
+    if (k >= 1) {
+      sun.phase = 'on'; sun.t = 0;
+      m.nodV += 1.1;                                  // the nod as they land
+      setFaceOverride(null);                           // back to the mood's face: the smirk
+    }
+  } else if (sun.phase === 'on') {                    // a small bounce and wobble, then they sit…
+    const u = sun.t;
+    if (u >= SUN.hold && state === 'sunglass') { setState('idle'); return; }   // …a while, then off (and the helmet back on)
+    s.position.set(0, 0.05 * Math.exp(-u * 10) * Math.abs(Math.sin(u * 16)), 0);
+    s.rotation.set(0, 0, 0.05 * Math.exp(-u * 7) * Math.sin(u * 20));
+  } else if (sun.phase === 'lift') {                  // lifted off and away, up out of frame
+    const k = Math.min(1, sun.t / SUN.lift);
+    s.position.set(0, sun.from + (SUN.high - sun.from) * k * k, 0);
+    s.rotation.set(0, 0, -0.12 * k);
+    if (k >= 1) {
+      sun.phase = null; s.visible = false; s.position.set(0, 0, 0); s.rotation.set(0, 0, 0);
+      if (sun.restoreHelmet && !hel.on && !yf.phase) setHelmet(true);   // the mode took it off: put it back
+    }
+  }
 }
 
 // ─── rigid-body motion ────────────────────────────────────────────────────
@@ -798,12 +910,14 @@ const m = {
   dragging: false, dragVel: 0, lastDir: 1,
   nod: 0, nodV: 0, rock: 0, rockV: 0, // pitch / roll wobble kicked by landings
   shake: 0,                           // error tremble amplitude
+  sq: 0, sqV: 0,                      // squash (−) / stretch (+): a springy toy squish on hops and landings
 };
 
 function hop(v) {
   if (m.airborne && m.y > m.hoverY + 0.12) return;   // no re-launching mid-air (rapid taps)
   m.airborne = true;
-  m.vy = Math.min(Math.max(m.vy, 0) + v, 4.6);
+  m.vy = Math.min(Math.max(m.vy, 0) + v * HOP_K, 7.2);
+  m.sqV += v * 0.55;                                 // springs up into a stretch
 }
 
 // Where to come to rest after a release: the whole turn (face-on) nearest to
@@ -838,7 +952,7 @@ function stepMotion(h) {
       m.spinV *= Math.exp(-h * m.glideF);
       if (Math.abs(m.spinV) < 1.2) m.glideF = 0;
     } else {
-      m.spinV += (45 * (m.home - m.spin) - 9.5 * m.spinV) * h;   // ζ ≈ 0.7: one soft overshoot
+      m.spinV += (70 * (m.home - m.spin) - 10 * m.spinV) * h;    // ζ ≈ 0.6: a snappy settle with one overshoot
       if (Math.abs(m.home - m.spin) < 1e-4 && Math.abs(m.spinV) < 1e-3) {
         m.spin -= m.home; m.home = 0;                  // keep the numbers small
       }
@@ -859,9 +973,10 @@ function stepMotion(h) {
     if (m.y <= m.hoverY && m.vy < 0) {
       const impact = -m.vy;
       m.y = m.hoverY;
+      m.sqV -= Math.min(impact, 6) * 0.42;            // squashes on landing
       m.nodV += Math.min(impact, 4.5) * 0.55;
       m.rockV += m.lastDir * Math.min(impact, 4.5) * 0.35;
-      if (impact > 1.5) m.vy = impact * 0.4;
+      if (impact > 2) m.vy = impact * 0.42;           // a springy rebound or two
       else { m.airborne = false; m.vy *= 0.3; }
     }
   } else {
@@ -869,14 +984,20 @@ function stepMotion(h) {
     m.y += m.vy * h;
   }
 
-  // wobble springs (ζ ≈ 0.24): two or three gentle rocks, then still
-  m.nodV += (-95 * m.nod - 4.6 * m.nodV) * h;
+  // wobble springs (ζ ≈ 0.2): a few lively rocks, then still
+  m.nodV += (-150 * m.nod - 5 * m.nodV) * h;
   m.nod += m.nodV * h;
-  m.rockV += (-95 * m.rock - 4.6 * m.rockV) * h;
+  m.rockV += (-150 * m.rock - 5 * m.rockV) * h;
   m.rock += m.rockV * h;
 
   m.vx += (90 * -m.x - 14 * m.vx) * h;
   m.x += m.vx * h;
+
+  // squash & stretch: stretches a little with the speed it's flying at, and the
+  // spring (ζ ≈ 0.35) jiggles it back after each launch / landing
+  const sqT = m.airborne ? THREE.MathUtils.clamp(Math.abs(m.vy) * 0.01, 0, 0.05) : 0;
+  m.sqV += (-260 * (m.sq - sqT) - 11 * m.sqV) * h;
+  m.sq = THREE.MathUtils.clamp(m.sq + m.sqV * h, -0.16, 0.14);
 }
 
 // ─── state machine ────────────────────────────────────────────────────────
@@ -903,7 +1024,6 @@ const scripts = [];               // timed one-shots { at, fn }
 
 function schedule(at, fn) { scripts.push({ at: stateTime + at, fn }); }
 const CURIOUS_HOLD = 2.2;        // s of curious before Idle
-const WOW_HOLD = 0.75;           // s of "wow" before it turns happy
 const HAPPY_HOLD = 1.5;          // s of happy before Idle
 const ANGRY_HOLD = 1.5;         // s the bot stays angry before it goes back to Idle
 const GREETING_HOLD = 1.5;      // s of greeting before it goes back to Idle
@@ -926,11 +1046,11 @@ function pickState(key) {
   setState(key);
 }
 
-function setState(next, { quiet = false, intro: byIntro = false, fromWow = false } = {}) {
-  if (next === 'happy' && !fromWow) next = 'wow';     // Happy is "wow!" first, then happy
+function setState(next, { quiet = false, intro: byIntro = false } = {}) {
   if (!STATES.some(s => s.key === next)) return;
   if (!byIntro) introRun = false;                     // any other state change ends the Intro chip
   if (state === 'yellowfriday' && next !== 'yellowfriday') resetYF();   // picked something else mid-sale
+  if (state === 'sunglass' && next !== 'sunglass') stopShades();       // leaving sunglasses mode
   const prev = state;
   if (prev !== next) { prevState = prev; prevStateTime = stateTime; poseBlend = 0; }
   state = next;
@@ -941,9 +1061,10 @@ function setState(next, { quiet = false, intro: byIntro = false, fromWow = false
   m.shake = 0;
 
   if (!quiet) {
+    m.nodV += 0.7;                                    // a little pop into every new mood
     switch (next) {
       case 'greeting':
-        hop(3.2);
+        hop(2.65);                                      // (the frame has little headroom: this keeps the hop + stretch in view)
         schedule(GREETING_HOLD, () => { if (state === 'greeting') setState('idle'); });
         break;
       case 'error':
@@ -971,18 +1092,16 @@ function setState(next, { quiet = false, intro: byIntro = false, fromWow = false
         startYF();
         break;
       case 'curious':
-        // a little "hm?" — leans in with a small bob, tilts and peeks; then back to Idle
+        // a little "hm?" — a bop, leans in, tilts and peeks; then back to Idle
+        hop(1.3);
         m.nodV += 0.7;
         schedule(CURIOUS_HOLD, () => { if (state === 'curious') setState('idle'); });
         break;
-      case 'wow':
-        // "wow!": a jolt back and a little hop, eyes and brows shoot up, mouth an O
-        hop(2.3);
-        m.nodV -= 1.2;
-        schedule(WOW_HOLD, () => { if (state === 'wow') setState('happy', { fromWow: true }); });
+      case 'sunglass':
+        startShades();
         break;
       case 'happy':
-        // …then happy: a blink into big ^^ and a grin, a bouncy hop and a wiggle; then Idle
+        // big ^^ and a grin, a bouncy hop and a wiggle; then Idle
         hop(2.9);
         schedule(HAPPY_HOLD, () => { if (state === 'happy') setState('idle'); });
         break;
@@ -1031,7 +1150,7 @@ BAR_STATES.forEach((s, i) => {
 });
 function syncNav() {
   introBtn.setAttribute('aria-pressed', String(introRun));
-  const shown = state === 'wow' ? 'happy' : state;   // "wow" is Happy's first beat
+  const shown = state;
   nav.querySelectorAll('button[data-state]').forEach(b => b.setAttribute('aria-pressed', String(!introRun && b.dataset.state === shown)));
 }
 // visor toggle, after a divider in the same bar
@@ -1208,10 +1327,11 @@ function tap() {
   if (state === 'sleepy') { setState('idle'); return; }
   hop(2.6);
   m.nodV += 1.2;
+  if (!yf.phase && !hel.anim) { m.spinV += (Math.random() < 0.5 ? -1 : 1) * 9; m.homing = false; }   // a quick playful twirl, springing home
 }
 
 // ─── face animation ───────────────────────────────────────────────────────
-const MORPH_S = 0.34;            // a direct face change (shapes ease across, with a soft squint mid-way)
+const MORPH_S = 0.27;            // a direct face change (shapes ease across, with a soft squint mid-way)
 const easeInOutSine = (x) => -(Math.cos(Math.PI * x) - 1) / 2;
 // the eyes lead the head: on a new glance they flick toward it, then ease back to
 // centre as the head turns to catch up (like real eyes); Figma px on the face
@@ -1234,8 +1354,8 @@ const CLOSED = (() => {
   const l = linePts(-42.5, -7, -21.5, -7);
   return { eyes: [{ a: l, b: l, w: 7 }, { a: mirror(l), b: mirror(l), w: 7 }], mouth: MOUTH_SET.none(), glint: 0, lip: 1, cheeks: 0, blink: 0 };
 })();
-const VIA = { close: 0.13, open: 0.34 };            // s: a quick blink shut, then open softly into the new shape
-const VIA_BACK = { reshape: 0.3, open: 0.32 };      // back to pills: relax shut, then open gently
+const VIA = { close: 0.11, open: 0.27 };            // s: a quick blink shut, then open softly into the new shape
+const VIA_BACK = { reshape: 0.24, open: 0.26 };      // back to pills: relax shut, then open gently
 function updateFace(dt) {
   updateEyeLook(dt);
   // pill ⇄ other face: squash the pills shut, then the closed line bends into
@@ -1362,13 +1482,14 @@ function updateGaze(dt) {
       gaze.i = (gaze.i + 1) % GLANCES.length;
       [gaze.ty, gaze.tp] = GLANCES[gaze.i];
       const centre = gaze.ty === 0 && gaze.tp === 0;
-      gaze.hold = (centre ? 2.8 : 2.0) + Math.random() * 0.8;
+      gaze.hold = (centre ? 1.9 : 1.35) + Math.random() * 0.6;
       if (Math.random() < 0.3 && blinkT < 0) nextBlink = 0.05;     // blink as it shifts its gaze
+      if (Math.random() < 0.35 && !hel.anim) hop(1.0);             // now and then a happy little bop
     }
   } else {
     gaze.ty = 0; gaze.tp = 0; gaze.i = -1; gaze.hold = 0.9;        // back to centre; restart the loop later
   }
-  const K = 6, D = 2 * Math.sqrt(K);                  // critically damped: smooth, no overshoot
+  const K = 16, D = 1.4 * Math.sqrt(K);               // quick and springy: a small overshoot on each glance
   gaze.vy += (K * (gaze.ty - gaze.yaw) - D * gaze.vy) * dt;
   gaze.yaw += gaze.vy * dt;
   gaze.vp += (K * (gaze.tp - gaze.pitch) - D * gaze.vp) * dt;
@@ -1378,7 +1499,7 @@ function updateGaze(dt) {
 // Per-state body pose (offsets on top of gaze / base pitch). Kept as a pure
 // function of time so the previous state's pose can keep playing while it
 // crossfades into the new one — no snap when a state ends.
-const POSE_BLEND_S = 0.65;        // mood → mood pose crossfade (eased)
+const POSE_BLEND_S = 0.4;         // mood → mood pose crossfade (eased)
 let prevState = 'idle', prevStateTime = 0, poseBlend = 1;
 function statePose(st, t, st_t) {
   const p = { yaw: 0, pitch: 0, roll: 0, sway: 0 };
@@ -1391,7 +1512,7 @@ function statePose(st, t, st_t) {
       p.pitch = 0.1;
       break;
     case 'greeting':
-      p.roll = Math.sin(st_t * 9) * 0.2 * Math.exp(-st_t * 1.2) + 0.06;
+      p.roll = Math.sin(st_t * 11) * 0.27 * Math.exp(-st_t * 1.3) + 0.06;
       break;
     case 'error':
       p.roll = Math.sin(st_t * 18) * 0.1 * Math.exp(-st_t * 3);
@@ -1412,21 +1533,25 @@ function statePose(st, t, st_t) {
       p.pitch = 0.16;
       break;
     case 'curious': {
-      const k = 1 - Math.exp(-st_t * 5);              // eases into the tilt
-      p.roll = -0.17 * k;                              // head tilted, big eye up
-      p.yaw = (0.11 + Math.sin(st_t * 1.4) * 0.05) * k;   // peeks to one side, slowly
-      p.pitch = 0.06 * k;                              // leans in a touch
+      const k = 1 - Math.exp(-st_t * 6) * Math.cos(st_t * 11);   // springs into the tilt (a little overshoot)
+      p.roll = -0.22 * k;                              // head tilted, big eye up
+      p.yaw = (0.13 + Math.sin(st_t * 2.2) * 0.07) * k;   // peeks to one side
+      p.pitch = 0.07 * k;                              // leans in
       break;
     }
-    case 'wow':
-      p.pitch = -0.13 * (1 - Math.exp(-st_t * 9));    // rears back in surprise
+    case 'sunglass': {                               // grooving: a cool little tilt and an easy nod to a beat
+      const k = 1 - Math.exp(-st_t * 4);
+      p.roll = 0.08 * k + Math.sin(t * 3.3) * 0.04 * k;
+      p.pitch = (Math.abs(Math.sin(t * 3.3)) * 0.09 - 0.03) * k;   // bobbing to the beat
+      p.yaw = Math.sin(t * 1.65) * 0.07 * k;
       break;
+    }
     case 'happy':
-      p.roll = Math.sin(st_t * 10) * 0.16 * Math.exp(-st_t * 1.4);   // a happy wiggle
+      p.roll = Math.sin(st_t * 13) * 0.26 * Math.exp(-st_t * 1.5);   // a big happy wiggle
       p.pitch = -0.04;
       break;
     case 'wishlist':
-      p.roll = Math.sin(st_t * 8) * 0.12 * Math.exp(-st_t * 1.6);   // a delighted little wiggle
+      p.roll = Math.sin(st_t * 11) * 0.2 * Math.exp(-st_t * 1.6);   // a delighted wiggle
       p.pitch = -0.06;                                               // looks up a touch
       break;
   }
@@ -1443,13 +1568,14 @@ function update(dt) {
 
   // hover height: a gentle bob, or sitting on the floor when asleep
   if (state === 'sleepy') m.hoverY = FLOOR_Y + BODY_BOTTOM;
-  else m.hoverY = HOVER_Y + Math.sin(t * 1.6) * (state === 'working' ? 0.02 : 0.05);
+  else m.hoverY = HOVER_Y + Math.sin(t * 2.3) * (state === 'working' ? 0.02 : 0.065);   // a bouncier float
 
   updateIntro(dt);
   acc += dt;
   while (acc >= H) { stepMotion(H); acc -= H; }
   updateYF(dt);                                       // Yellow Friday drives the turn itself
   updateHelmet(dt);
+  updateShades(dt);
 
   // state-specific pose (self-driven — never from the cursor)
   updateGaze(dt);
@@ -1473,7 +1599,9 @@ function update(dt) {
 
   euler.set(pitch, yaw + m.spin, roll, 'YXZ');
   body.quaternion.setFromEuler(euler);
-  body.scale.setScalar(Math.max(1e-4, intro.scale) * THREE.MathUtils.lerp(1, YF.ballK, yf.amt));
+  const bs = Math.max(1e-4, intro.scale) * THREE.MathUtils.lerp(1, YF.ballK, yf.amt);
+  const sy = 1 + m.sq, sxz = 1 - m.sq * 0.5;           // squash & stretch (roughly volume-keeping)
+  body.scale.set(bs * sxz, bs * sy, bs * sxz);
   const tremble = m.shake ? Math.sin(t * 90) * m.shake : 0;
   body.position.set(m.x + sway + tremble, m.y + helPose.lift, 0);
 
@@ -1531,4 +1659,4 @@ syncNav();
 requestAnimationFrame(frame);
 
 // small hook for automated checks
-window.orbi = { setState, setHelmet, hel, eyeLook, faceCur: () => faceCur, wishlist: () => pickState('wishlist'), yellowFriday: () => pickState('yellowfriday'), yf, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };
+window.orbi = { shades, sun, setState, setHelmet, hel, eyeLook, faceCur: () => faceCur, wishlist: () => pickState('wishlist'), yellowFriday: () => pickState('yellowfriday'), yf, nudge, helmet, toggleVisor, advance: update, faceCanvas, intro, gaze, replay: playIntro, get state() { return state; }, motion: m, bodyUniforms: uniforms, bodyMat, renderer, scene, camera };
