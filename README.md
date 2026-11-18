@@ -39,7 +39,7 @@ browser builds and draws.
 
 ## What's in it
 
-- **States** — Idle, Greeting, Angry, Wishlist, Yellow Friday, Curious, Happy and Sunglasses (bar at the bottom, or keys 1–8). Greeting
+- **States** — Idle, Greeting, Angry, Wishlist, Yellow Friday, Curious, Happy, Sunglasses, Tap me and Super angry (bar at the bottom, or keys 1–9, 0). Greeting
   smiles for 1.5 s, then goes back to Idle (the intro's greeting lasts the same). Angry always
   starts with the visor up (if it's down, it flips open first, ~0.35 s), lasts 1.5 s, then the
   face calms back to Idle and, once it has settled (~0.6 s), the visor comes down.
@@ -48,20 +48,28 @@ browser builds and draws.
   bouncy hop and a wiggle (1.5 s), then Idle.
   **Sunglasses**: the helmet comes off (the usual off move), then big black Ray-Ban Wayfarers —
   a flat front just in front of the face (it doesn't wrap onto the ball), thick glossy black frames
-  heaviest along the brow, black trapezoid lenses, a bridge and straight arms back past the head — drop
-  onto Golu's eyes from above, land with a little bounce and a nod, and it grooves (a cool tilt and
-  an easy nod) with a smirk, low on the face below the shades. After ~2 s (or as soon as another mood is picked) the shades lift off,
-  the helmet goes back on (if the mode took it off) and Golu returns to Idle.
+  heaviest along the brow, black trapezoid lenses, a bridge and straight arms back past the head — come from
+  behind Golu, over the top of its head and onto its eyes (like the helmet), land with a little bounce and a nod, and it grooves (a cool tilt and
+  an easy nod) with a smirk, low on the face below the shades. After ~2 s (or as soon as another mood is picked) the shades go back over its head and hide behind it,
+  and as they go the helmet comes back from behind onto its head (always); then Golu returns to Idle.
+  **Super angry** (key 0): furious — brows, red flush, a hard shudder and a stomp, visor up — then it
+  turns away (about 130°, not all the way) and sulks, still and quiet (no shaking), with the odd
+  "hmph". It won't turn back on its own: swipe it sideways twice (or press ← / → twice). Dragging it
+  meets tight resistance — a very stiff rubber band that barely gives (~25° for a long drag) and
+  pulls back toward the sulk —
+  but each proper swipe counts: the first gets a grudging glance back, the second turns it round to
+  face you and it calms back to Idle. Left sulking, every few seconds it insists — still angry-faced: turns
+  partway back and rocks side to side, as if showing you the swipe.
   **Wishlist** (for a wishlist heart tap; call `orbi.wishlist()` from your card's heart): the
   eyes morph into red hearts (two round lobes to a clean point) with a smile, it hops, and 3 hearts pop out from
   behind the bot, drift up and fade; after 1.6 s it goes back to Idle.
-  **Yellow Friday** (`orbi.yellowFriday()`): one quick, eased 360° (0.5 s) during which the bot
-  morphs into a plain yellow ball — the helmet sinks gradually into the ball, the face fades and
-  the ball swells to 1.22×. Just before it's fully a ball, "YELLOW FRIDAY SALE" starts running
-  round it, carried round by the end of the turn: the 3D Bot Home Page iteration 03 Lottie's own
+  **Yellow Friday** (`orbi.yellowFriday()`): the helmet comes off (the usual helmet-off move: up,
+  over and away behind the head), Golu's face clears and the bare yellow head becomes the ball, with a
+  little bop as "YELLOW FRIDAY SALE" starts running round it: the 3D Bot Home Page iteration 03 Lottie's own
   lettering (*Golu New Loop_6*, frames 217–402), unwrapped into `assets/yf-strip.png` (a seam-free
-  2× strip), scrolling on the Lottie's own speed curve at 0.75× (a bit slower, easier to read). Once the text has gone, a second 360° (0.8 s)
-  morphs it back into the bot — always with the visor down — then Idle (~4.6 s in all). No hop either way. Faces morph smoothly;
+  2× strip), scrolling on the Lottie's own speed curve at 0.75× (a bit slower, easier to read). Once the last
+  letter has gone, the face comes back and the helmet goes on again — always with the visor down — then
+  Idle (~4.8 s in all). Picking another mood mid-sale still brings the helmet back. Faces morph smoothly;
   Idle slowly glances left, right, up-left, up-right — the eyes lead each glance and ease back to centre as the
   head catches up. Faces ease across with a soft squint mid-change; blinks close quickly and open slower (now and
   then a double blink). Eyes are plain black (no white glint, no white rim under them).
@@ -71,8 +79,14 @@ browser builds and draws.
 - **Feel** — bouncy and energetic: a springy toy squish (stretches as it leaps, squashes on
   landing and jiggles back — helmet and shades too), snappy gravity with higher hops that land with a springy
   rebound, taps that add a playful twirl, lively wobbles, a bouncier float, quick springy glances (and the odd happy bop) in Idle,
-  a little pop into every mood, bigger springier mood poses, and Yellow Friday turns that wind up
-  and snap home with an overshoot.
+  a little pop into every mood, bigger springier mood poses.
+- **"Tap me!"** — if nobody interacts for ~6 s while Golu is idle, it asks to be tapped, with no
+  text — just action: no extra elements, just body and face (no mouth). It leans in with big eager eyes, then acts out
+  being "poked" twice like a button: each poke squashes it back and scrunches its eyes into a giggly
+  ^^ with a wiggle, then the big eager eyes pop open again, asking for more. Then an eager hop and
+  a wiggle, like "now you try!" (~2.6 s). No stray blinks while it asks.
+  It asks again every ~8 s until someone clicks, taps or presses a key, which stops it at once.
+  The **Tap me** chip (key 9) plays the same ask on demand, then Idle.
 - **Interaction** — drag sideways to rotate; on release it coasts with your momentum and
   springs back face-on. Swipe up / down to raise / lower the visor;
   swipe up 3 times in a row (each within 1.5 s) and it gets angry. Tap to bounce.
@@ -86,8 +100,8 @@ browser builds and draws.
   further away), never passes through the head (straight up its own axis is the one clean way off;
   turning about the head's centre keeps that clearance), and ends on the camera's line of sight
   behind the head, fully hidden. Golu holds still (no idle glances) while it moves.
-  The Visor button hides while the helmet is off; Angry skips its visor flip; Yellow Friday and
-  the intro keep the helmet off.
+  The Visor button hides while the helmet is off; Angry skips its visor flip; Yellow Friday takes
+  the helmet off and puts it back itself (the button waits); the intro keeps the helmet off.
 - **Colour** — one fixed yellow (no colour switch).
 - **Helmet** (`helmet.js`) — shell, artwork, liner + stitching built from the Figma
   component's SVG paths; glass visor + hinges; procedural paint, leather and metal detail.
